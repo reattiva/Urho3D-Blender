@@ -7,6 +7,8 @@
 # http://docs.python.org/2/library/struct.html
 
 from mathutils import Vector, Matrix, Quaternion
+from xml.etree import ElementTree as ET
+from xml.dom import minidom
 import operator
 import struct
 import os
@@ -74,6 +76,22 @@ LINE_LIST           = 1
 # Max number of bones supported by HW skinning
 MAX_SKIN_MATRICES   = 64
 
+# Max difference between floats to be equal
+EPSILON = 1e-6
+
+def FloatListAlmostEqual(v1, v2):
+    c = (v1 is None) + (v2 is None)
+    if c == 2:
+        return True
+    if c == 1:
+        return False
+    for e1,e2 in zip(v1,v2):
+        if abs(e1-e2) > EPSILON:
+            return False
+    return True
+    #return sum( abs(a-b) for a,b in zip(v1,v2) ) < EPSILON
+    #return (self.pos - other.pos).length < EPSILON
+            
 #--------------------
 # Classes
 #--------------------
@@ -108,7 +126,8 @@ class MaskError(Exception):
     pass
 
 # --- Model classes ---
-    
+
+cnt=0
 class UrhoVertex:
     def __init__(self, tVertex, uVertexBuffer):
         # Note: cannot pass elementMask directly because it is immutable
@@ -131,6 +150,10 @@ class UrhoVertex:
         self.uv = tVertex.uv
         if tVertex.uv:
             mask |= ELEMENT_UV1
+        # Vertex UV2 texture coordinate: (0.0, 0.0) of floats
+        self.uv2 = tVertex.uv2
+        if tVertex.uv2:
+            mask |= ELEMENT_UV2
         # Vertex tangent: Vector((0.0, 0.0, 0.0, 0.0)) of floats
         self.tangent = tVertex.tangent
         if tVertex.tangent:
@@ -146,7 +169,7 @@ class UrhoVertex:
             # Keep only the first 4 tuples, normalize weights, add at least 4 tuples
             for i in range(4):
                 t = (0, 0.0)
-                if i < len(sortedList):
+                if totalWeight and i < len(sortedList):
                     t = sortedList[i]
                     t = (t[0], t[1] / totalWeight)
                 self.weights.append(t) 
@@ -162,22 +185,65 @@ class UrhoVertex:
     
     # used by the function index() of lists
     def __eq__(self, other):
-        return (self.pos == other.pos and self.normal == other.normal and 
-                self.color == other.color and self.uv == other.uv)
+        #return (self.pos == other.pos and self.normal == other.normal and 
+        #        self.color == other.color and self.uv == other.uv)
+        # !!! TODO: None and !None
+        #if self.pos and other.pos and (self.pos - other.pos).length > EPSILON:
+        print("x")
+        if not FloatListAlmostEqual(self.pos, other.pos):
+            return False
+        #if self.normal and other.normal and (self.normal - other.normal).length > EPSILON:
+        if not FloatListAlmostEqual(self.normal, other.normal):
+            global cnt
+            cnt+=1
+            if (cnt > 100):
+                return False
+            v = self.normal
+            print("   1: {:f} {:f} {:f}".format(v.x, v.y, v.z))
+            v = other.normal
+            print("   2: {:f} {:f} {:f}".format(v.x, v.y, v.z))
+            return False
+        if self.color != other.color:
+            return False
+        #if self.uv and other.uv and abs(self.uv[0] - other.uv[0]) + abs(self.uv[1] - other.uv[1]) > EPSILON:
+        if not FloatListAlmostEqual(self.uv, other.uv):
+            return False
+        #if self.uv2 and other.uv2 and abs(self.uv2[0] - other.uv2[0]) + abs(self.uv2[1] - other.uv2[1]) > EPSILON:
+        if not FloatListAlmostEqual(self.uv2, other.uv2):
+            return False
+        return True
+
+    def AlmostEqual(self, other):
+        if not FloatListAlmostEqual(self.pos, other.pos):
+            return False
+        if not FloatListAlmostEqual(self.normal, other.normal):
+            return False
+        if self.color != other.color:
+            return False
+        if not FloatListAlmostEqual(self.uv, other.uv):
+            return False
+        if not FloatListAlmostEqual(self.uv2, other.uv2):
+            return False
+        return True
+
+    def LodAlmostEqual(self, other):
+        return FloatListAlmostEqual(self.pos, other.pos)
 
     # id of this vertex (not unique)
     def __hash__(self):
         hashValue = 0
         if self.pos:
             hashValue ^= hash(self.pos.x) ^ hash(self.pos.y) ^ hash(self.pos.z)
-        if self.normal:
-            hashValue ^= hash(self.normal.x) ^ hash(self.normal.y) ^ hash(self.normal.z)
-        if self.uv:
-            hashValue ^= hash(self.uv.x) ^ hash(self.uv.y)
+        # !!!
+        #if self.normal:
+        #    hashValue ^= hash(self.normal.x) ^ hash(self.normal.y) ^ hash(self.normal.z)
+        #if self.uv:
+        #    hashValue ^= hash(self.uv.x) ^ hash(self.uv.y)
         return hashValue
 
     # used by moprh vertex calculations
     def subtract(self, other, mask):
+        # !!! bitangent? tangnet .w?
         if mask & ELEMENT_POSITION:
             self.pos -= other.pos
         if mask & ELEMENT_NORMAL:
@@ -323,6 +389,51 @@ class UrhoAnimation:
         # Tracks
         self.tracks = []
 
+class UrhoMaterial:
+    def __init__(self):
+        # Material name
+        self.name = None
+        # Technique name
+        self.techniqueName = None
+        # Material diffuse color (0.0, 0.0, 0.0, 0.0) (r,g,b,a)
+        self.diffuseColor = None
+        # Material specular color (0.0, 0.0, 0.0, 0.0) (r,g,b,power)
+        self.specularColor = None
+        # Diffuse color texture filename (no path)
+        self.diffuseTexName = None
+        # Normal texture filename (no path)
+        self.normalTexName = None
+        # Specular texture filename (no path)
+        self.specularTexName = None
+        # Emissive texture filename (no path)
+        self.lightmapTexName = None
+        # Material is two sided
+        self.twoSided = False
+
+    def getTexturesNumber(self):
+        return 4;
+
+    def getTextureName(self, index):
+        if index == 0:
+            return self.diffuseTexName
+        elif index == 1:
+            return self.normalTexName
+        elif index == 2:
+            return self.specularTexName
+        elif index == 3:
+            return self.lightmapTexName
+        return None
+
+    def setTextureName(self, index, name):
+        if index == 0:
+            self.diffuseTexName = name
+        elif index == 1:
+            self.normalTexName = name
+        elif index == 2:
+            self.specularTexName = name
+        elif index == 3:
+            self.lightmapTexName = name
+
 # --- Export options classes ---
 
 class UrhoExportData:
@@ -331,6 +442,8 @@ class UrhoExportData:
         self.models = []
         # List of UrhoAnimation
         self.animations = []
+        # List of UrhoMaterial
+        self.materials = []
         
 class UrhoExportOptions:
     def __init__(self):
@@ -377,7 +490,7 @@ class BinaryFileWriter:
         self.file.write(struct.pack("<4f", v.w, v.x, v.y, v.z))
 
     # Writes three 32 bits floats .x .y .z
-    def writeVector(self, v):
+    def writeVector3(self, v):
         self.file.write(struct.pack("<3f", v.x, v.y, v.z))
 
     # Writes a 32 bits float
@@ -420,17 +533,20 @@ def UrhoWriteModel(model, filename):
         # Vertex data (vertex count * vertex size)
         for vertex in buffer.vertices:
             if mask & ELEMENT_POSITION:
-                fw.writeVector(vertex.pos)
+                fw.writeVector3(vertex.pos)
             if mask & ELEMENT_NORMAL:
-                fw.writeVector(vertex.normal)
+                fw.writeVector3(vertex.normal)
             if mask & ELEMENT_COLOR:
                 for c in vertex.color:
                     fw.writeUByte(c)
             if mask & ELEMENT_UV1:
                 for uv in vertex.uv:
                     fw.writeFloat(uv)
+            if mask & ELEMENT_UV2:
+                for uv2 in vertex.uv2:
+                    fw.writeFloat(uv2)
             if mask & ELEMENT_TANGENT:
-                fw.writeVector(vertex.tangent)
+                fw.writeVector3(vertex.tangent)
                 fw.writeFloat(vertex.tangent.w)
             if mask & ELEMENT_BWEIGHTS:
                 for iw in vertex.weights:
@@ -504,13 +620,13 @@ def UrhoWriteModel(model, filename):
                 fw.writeUInt(vertex.index)
                 # Moprh vertex Position
                 if mask & ELEMENT_POSITION:
-                    fw.writeVector(vertex.pos)
+                    fw.writeVector3(vertex.pos)
                 # Moprh vertex Normal
                 if mask & ELEMENT_NORMAL:
-                    fw.writeVector(vertex.normal)
+                    fw.writeVector3(vertex.normal)
                 # Moprh vertex Tangent
                 if mask & ELEMENT_TANGENT:
-                    fw.writeVector(vertex.tangent)
+                    fw.writeVector3(vertex.tangent)
                     fw.writeFloat(vertex.tangent.w)
                     
     # Number of bones (may be 0)
@@ -523,11 +639,11 @@ def UrhoWriteModel(model, filename):
         # Parent bone index starting from 0
         fw.writeUInt(bone.parentIndex)
         # Initial position
-        fw.writeVector(bone.position)
+        fw.writeVector3(bone.position)
         # Initial rotation
         fw.writeQuaternion(bone.rotation)
         # Initial scale
-        fw.writeVector(bone.scale)
+        fw.writeVector3(bone.scale)
         # 4x3 offset matrix for skinning
         for row in bone.inverseMatrix[:3]:
             for v in row:
@@ -539,18 +655,18 @@ def UrhoWriteModel(model, filename):
             fw.writeFloat(bone.radius)
         # Bone bounding box minimum and maximum
         if bone.collisionMask & BONE_BOUNDING_BOX:
-            fw.writeVector(bone.boundingBox.min)    
-            fw.writeVector(bone.boundingBox.max)    
+            fw.writeVector3(bone.boundingBox.min)    
+            fw.writeVector3(bone.boundingBox.max)    
          
     # Model bounding box minimum  
-    fw.writeVector(model.boundingBox.min)
+    fw.writeVector3(model.boundingBox.min)
     # Model bounding box maximum
-    fw.writeVector(model.boundingBox.max)
+    fw.writeVector3(model.boundingBox.max)
 
     # For each geometry
     for geometry in model.geometries:
         # Geometry center
-        fw.writeVector(geometry.center)
+        fw.writeVector3(geometry.center)
     
     fw.close()
 
@@ -595,41 +711,87 @@ def UrhoWriteAnimation(animation, filename):
             fw.writeFloat(keyframe.time)
             # Keyframe position
             if mask & TRACK_POSITION:
-                fw.writeVector(keyframe.position)
+                fw.writeVector3(keyframe.position)
             # Keyframe rotation
             if mask & TRACK_ROTATION:
                 fw.writeQuaternion(keyframe.rotation)
             # Keyframe scale
             if mask & TRACK_SCALE:
-                fw.writeVector(keyframe.scale)
+                fw.writeVector3(keyframe.scale)
 
     fw.close()
 
+        
 def UrhoWriteMaterial(material, filename, useStandardDirs):
 
+    def Vector4ToString(vector):
+        return "{:g} {:g} {:g} {:g}".format(vector[0], vector[1], vector[2], vector[3])
+
+    def XmlToPrettyString(elem):
+        rough = ET.tostring(elem, 'utf-8')
+        reparsed = minidom.parseString(rough)
+        pretty = reparsed.toprettyxml(indent="  ")
+        i = pretty.rfind("?>")
+        if i >= 0:
+            pretty = pretty[i+2:]
+        return pretty.strip()
+    
+    texturesPath = ""
+    if useStandardDirs:
+        texturesPath = "Textures/"
+        
+    materialElem = ET.Element('material')
+
+    #comment = ET.Comment("Material {:s} created from Blender".format(material.name))
+    #materialElem.append(comment)
+    
+    techniqueElem = ET.SubElement(materialElem, "technique")
+    techniqueElem.set("name", material.techniqueName + ".xml")
+
+    if material.diffuseTexName:
+        diffuseElem = ET.SubElement(materialElem, "texture")
+        diffuseElem.set("unit", "diffuse")
+        diffuseElem.set("name", texturesPath + material.diffuseTexName)
+
+    if material.normalTexName:
+        normalElem = ET.SubElement(materialElem, "texture")
+        normalElem.set("unit", "normal")
+        normalElem.set("name", texturesPath + material.normalTexName)
+        
+    if material.specularTexName:
+        specularElem = ET.SubElement(materialElem, "texture")
+        specularElem.set("unit", "specular")
+        specularElem.set("name", texturesPath + material.specularTexName)
+
+    if material.lightmapTexName:
+        emissiveElem = ET.SubElement(materialElem, "texture")
+        emissiveElem.set("unit", "emissive")
+        emissiveElem.set("name", texturesPath + material.lightmapTexName)
+
+    if material.diffuseColor:
+        diffuseColorElem = ET.SubElement(materialElem, "parameter")
+        diffuseColorElem.set("name", "MatDiffColor")
+        diffuseColorElem.set("value", Vector4ToString(material.diffuseColor) )
+
+    if material.specularColor:
+        specularElem = ET.SubElement(materialElem, "parameter")
+        specularElem.set("name", "MatSpecColor")
+        specularElem.set("value", Vector4ToString(material.specularColor) )
+
+    if material.twoSided:
+        cullElem = ET.SubElement(materialElem, "cull")
+        cullElem.set("value", "none")
+        shadowCullElem = ET.SubElement(materialElem, "shadowcull")
+        shadowCullElem.set("value", "none")
+    
     try:
         file = open(filename, "w")
     except Exception as e:
         log.error("Cannot open file {:s} {:s}".format(filename, e))
         return
-    
-    # TODO
-    material.specularColor = Vector((0.0, 0.0, 0.0, 1.0))
-    
-    imageRelPath = material.imageName
-    if useStandardDirs:
-        #imageRelPath = os.path.join("Textures", imageRelPath)
-        imageRelPath = "Textures/" + imageRelPath
-    
-    file.write("<material>\n"
-               "    <technique name=\"Techniques/Diff.xml\" />\n")
-    file.write("    <texture unit=\"diffuse\" name=\"{:s}\" />\n"
-               .format(imageRelPath) )
-    file.write("    <parameter name=\"MatSpecColor\" value=\"{:.1f} {:.1f} {:.1f} {:.1f}\" />\n"
-               .format(material.specularColor[0], material.specularColor[1], material.specularColor[2], material.specularColor[3]) )
-    file.write("</material>")
-
+    file.write(XmlToPrettyString(materialElem))
     file.close()
+
 
 #---------------------------------------
 
@@ -656,8 +818,20 @@ def UrhoWriteMaterial(material, filename, useStandardDirs):
 # Urho exporter
 #--------------------
 
-def UrhoExport(tData, uExportOptions, uExportData):
-    
+def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
+
+    try:
+        errorsIndices = errorsDict["incompatible element mask"]
+    except KeyError:
+        errorsIndices = set()
+        errorsDict["incompatible element mask"] = errorsIndices
+
+    try:
+        errorsMorphIndices = errorsDict["incompatible morph element mask"]
+    except KeyError:
+        errorsMorphIndices = set()
+        errorsDict["incompatible morph element mask"] = errorsMorphIndices
+
     uModel = UrhoModel()
     uModel.name = tData.objectName
     uExportData.models.append(uModel)    
@@ -726,7 +900,7 @@ def UrhoExport(tData, uExportOptions, uExportData):
             uGeometry.lodLevels.append(uLodLevel)
             
             if i == 0 and tLodLevel.distance != 0.0:
-                log.warning("First lod of object {:s} should have 0.0 distance".format(uModel.name))
+                log.warning("First LOD of object {:s} should have 0.0 distance (now {:.3f})".format(uModel.name, tLodLevel.distance))
 
             uLodLevel.distance = tLodLevel.distance
             uLodLevel.primitiveType = TRIANGLE_LIST
@@ -758,14 +932,18 @@ def UrhoExport(tData, uExportOptions, uExportData):
             for tVertexIndex in tLodLevel.indexSet:
             
                 tVertex = tData.verticesList[tVertexIndex]
+                #print(str(tVertexIndex) + " " + str(tVertex.pos)) # !!!
 
                 # Create a Urho vertex
                 try:
                     uVertex = UrhoVertex(tVertex, vertexBuffer)
                 except MaskError as e:
+                    if not tVertex.blenderIndex is None:
+                        errorsIndices.add(tVertex.blenderIndex)
                     log.warning("Incompatible vertex element mask in object {:s} ({:s})".format(uModel.name, e))
+                    print("incompatible " + str(tVertex.pos))
                                 
-                # All this code do is "uVertexIndex = vertexBuffer.vertices.index(uVertex)", but we use
+                # All that this code do is "uVertexIndex = vertexBuffer.vertices.index(uVertex)", but we use
                 # a map to speed up.
             
                 # Get an hash of the vertex (more vertices can have the same hash)
@@ -775,7 +953,7 @@ def UrhoExport(tData, uExportOptions, uExportData):
                     # Get the list of vertices indices with the same hash
                     uVerticesMapList = uVerticesMap[uVertexHash]
                 except KeyError:
-                    # If the hash is not mapped, create a new list (we should use sets but lists are faster)
+                    # If the hash is not mapped, create a new list (we could use a set but a list is faster)
                     uVerticesMapList = []
                     uVerticesMap[uVertexHash] = uVerticesMapList
                 
@@ -783,17 +961,37 @@ def UrhoExport(tData, uExportOptions, uExportData):
                 # If Position, Normal and UV are the same, it must be the same vertex, get its index.
                 uVertexIndex = None
                 for ivl in uVerticesMapList:
-                    if vertexBuffer.vertices[ivl] == uVertex:
+                    ## !!!
+                    uListedVertex = vertexBuffer.vertices[ivl]
+                    #if vertexBuffer.vertices[ivl] == uVertex:
+                    #if vertexBuffer.vertices[ivl].pos == uVertex.pos:
+                    #if (i == 0 and uListedVertex.AlmostEqual(uVertex)) or (i != 0 and uListedVertex.LodAlmostEqual(uVertex)) :
+                    if uListedVertex.AlmostEqual(uVertex):
                         uVertexIndex = ivl
                         break
 
+                ##if i == 0 or uVertexIndex is None:
+                ##    print("i:" + str(i) + " pos:" + str(uVertex.pos) + " " + str(len(uVerticesMapList)) )
+
                 # If we cannot find it, the vertex is new, add it to the list, and its index to the map list
                 if uVertexIndex is None:
+                    if i != 0:
+                        #print("pos: " + str(uVertex.pos))
+                        for ivl in uVerticesMapList:
+                            if vertexBuffer.vertices[ivl].pos == uVertex.pos:
+                                v1 = uVertex.normal
+                                v2 = vertexBuffer.vertices[ivl].normal
+                                #if v1 != v2:
+                                    #print("-" + str(v1))
+                                    #print("   1: {:f} {:f} {:f}".format(v1.x, v1.y, v1.z))
+                                    #print("   2: {:f} {:f} {:f}".format(v2.x, v2.y, v2.z))
+                                    #print("diff: {:e} {:e} {:e}".format(v1.x-v2.x, v1.y-v2.y, v1.z-v2.z))
                     uVertexIndex = len(vertexBuffer.vertices)
                     vertexBuffer.vertices.append(uVertex)
                     uVerticesMapList.append(uVertexIndex)
                     if i != 0:
                         log.warning("LOD {:d} of object {:s} has new vertices.".format(i, uModel.name))
+                        
                 
                 # Populate the 'old tVertex index' to 'new uVertex index' map
                 if not tVertexIndex in indexMap:
@@ -941,6 +1139,8 @@ def UrhoExport(tData, uExportOptions, uExportData):
                 try:
                     uMorphVertex = UrhoVertex(tMorphVertex, uMorphVertexBuffer)
                 except MaskError as e:
+                    if not tVertex.blenderIndex is None:
+                        errorsMorphIndices.add(tMorphVertex.blenderIndex)
                     log.warning("Incompatible vertex element mask in morph {:s} of object {:s} ({:s})".format(uMorph.name, uModel.name, e))
 
                 # Get the original vertex
@@ -1003,4 +1203,50 @@ def UrhoExport(tData, uExportOptions, uExportData):
         if uAnimation.tracks:
             uAnimations.append(uAnimation)
     
-                
+    uMaterials = uExportData.materials
+    for tMaterial in tData.materialsList:
+        uMaterial = UrhoMaterial()
+        uMaterial.name = tMaterial.name
+        
+        alpha = 1.0
+        if tMaterial.opacity and tMaterial.opacity < 1.0:
+            alpha = tMaterial.opacity
+
+        technique = "Techniques/NoTexture"
+        if tMaterial.diffuseTexName:
+            technique = "Techniques/Diff"
+            if tMaterial.normalTexName:
+                technique += "Normal"
+            if tMaterial.specularTexName:
+                technique += "Spec"
+            if tMaterial.lightmapTexName and not tMaterial.normalTexName and not tMaterial.specularTexName:
+                technique += "LightMap"
+        if alpha < 1.0:
+            technique += "Alpha";
+
+        uMaterial.techniqueName = technique
+
+        if tMaterial.diffuseColor:
+            diffuse = tMaterial.diffuseColor * tMaterial.diffuseIntensity
+            uMaterial.diffuseColor = (diffuse.r, diffuse.g, diffuse.b, alpha)
+            
+        if tMaterial.specularColor and tMaterial.specularHardness:
+            specular = tMaterial.specularColor * tMaterial.specularIntensity
+            power = tMaterial.specularHardness
+            uMaterial.specularColor = (specular.r, specular.g, specular.b, power)
+
+        uMaterial.twoSided = tMaterial.twoSided
+
+        uMaterial.diffuseTexName = tMaterial.diffuseTexName
+        uMaterial.normalTexName = tMaterial.normalTexName
+        uMaterial.specularTexName = tMaterial.specularTexName
+        uMaterial.lightmapTexName = tMaterial.lightmapTexName
+        
+        uMaterials.append(uMaterial)
+       
+
+ 
+    
+    
+    
+    

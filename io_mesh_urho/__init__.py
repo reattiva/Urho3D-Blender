@@ -1,4 +1,6 @@
 
+# LOD: be sure all have the same material or a new geometry is created
+
 #
 # This script is licensed as public domain.
 #
@@ -17,13 +19,14 @@
 # http://wiki.blender.org/index.php/Doc:2.6/Manual/Extensions/Python/Properties
 # http://www.blender.org/documentation/blender_python_api_2_66_4/info_tutorial_addon.html
 
-#print("Urho init ---------------------------------------------------")
+DEBUG = 0
+if DEBUG: print("Urho export init")
 
 bl_info = {
     "name": "Urho3D export",
     "description": "Urho3D export",
     "author": "reattiva",
-    "version": (0, 3),
+    "version": (0, 4),
     "blender": (2, 66, 0),
     "location": "Properties > Render > Urho export",
     "warning": "big bugs, use at your own risk",
@@ -35,9 +38,11 @@ if "decompose" in locals():
     import imp
     imp.reload(decompose)
     imp.reload(export_urho)
+    if DEBUG and "testing" in locals(): imp.reload(testing)
 
 from .decompose import TOptions, Scan
 from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, UrhoWriteMaterial, UrhoExport
+if DEBUG: from .testing import PrintUrhoData, PrintAll
     
 import os
 import time
@@ -110,12 +115,13 @@ consoleHandler = logging.StreamHandler()
 consoleHandler.addFilter(consoleFilter)
 log.addHandler(consoleHandler)
 
+
 #--------------------
 # Blender UI
 #--------------------
 
 # Addon preferences, they are visible in the Users Preferences Addons page,
-# under the Uhro exporter addon row
+# under the Urho exporter addon row
 class UrhoAddonPreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
@@ -182,20 +188,19 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.modifiers = False
         self.modifiersRes = 'PREVIEW'
         self.origin = 'LOCAL'
+        self.selectErrors = True
         self.forceElements = False
         self.merge = False
         self.geometrySplit = False
         self.lods = False
         self.optimizeIndices = False
 
-        self.skeletons = True
+        self.skeletons = False
         self.onlyKeyedBones = False
+        self.derigify = False
 
         self.animations = False
-        self.actions = True
-        self.onlyUsedActions = False
-        self.tracks = False
-        self.timeline = False
+        self.animationSource = 'USED_ACTIONS'
         self.animationPos = True
         self.animationRot = True
         self.animationSca = False
@@ -204,7 +209,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.geometryPos = True
         self.geometryNor = True
         self.geometryCol = False
+        self.geometryColAlpha = False
         self.geometryUV = False
+        self.geometryUV2 = False
         self.geometryTan = False
         self.geometryWei = False
 
@@ -272,9 +279,14 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
                    ('LOCAL', "Local", "object's local origin (orange dot)")),
             default='LOCAL')
 
+    selectErrors = BoolProperty(
+            name = "Select vertices with errors",
+            description = "If a vertex has errors (e.g. invalid UV, missing UV or color or weights) select it",
+            default = False)
+
     forceElements = BoolProperty(
             name = "Force missing elements",
-            description = "If a vertec elements is missing add it with a zero value (UV, color, weights)",
+            description = "If a vertex element (UV, color, weights) is missing add it with a zero value",
             default = False)
 
     merge = BoolProperty(
@@ -310,30 +322,28 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Export only bones with keys",
             default = False)
 
+    derigify = BoolProperty(
+            name = "Derigify",
+            description = "Remove extra bones from Rigify armature",
+            default = True)
+
     animations = BoolProperty(
             name = "Animations",
             description = "Export animations (Skeletons needed)",
             default = False)
+
+    animationSource = EnumProperty(
+            name = "",
+            items = (('ALL_ACTIONS', "All Actions", "Export all the actions in memory"),
+                    ('USED_ACTIONS', "Actions used in tracks", "Export only the actions used in NLA tracks"),
+                    ('SELECTED_STRIPS', "Selected Strips", "Export the current selected NLA strips"),
+                    ('SELECTED_TRACKS', "Selected Tracks", "Export the current selected NLA tracks"),
+                    ('ALL_STRIPS', "All Strips", "Export all NLA strips"),
+                    ('ALL_TRACKS', "All Tracks (not muted)", "Export all NLA tracks"),
+                    ('TIMELINE', "Timelime", "Export the timeline (NLA tracks sum)")),
+            default = 'USED_ACTIONS')
             
-    actions = BoolProperty(
-            name = "Actions",
-            description = "Export actions",
-            default = True)
-
-    onlyUsedActions = BoolProperty(
-            name = "Only actions used in tracks",
-            description = "Export only actions used in the NLA tracks",
-            default = True)
-
-    tracks = BoolProperty(
-            name = "Tracks (only not muted)",
-            description = "Export not muted NLA tracks",
-            default = False)
-
-    timeline = BoolProperty(
-            name = "Timeline",
-            description = "Export the timeline (NLA tracks sum)",
-            default = False)
+    #---------------------------------
 
     animationPos = BoolProperty(
             name = "Position",
@@ -373,9 +383,20 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Within geometry export vertex color",
             default = False)
 
+    geometryColAlpha = BoolProperty(
+            name = "Alpha",
+            description = "Within geometry export vertex alpha (append _ALPHA to the color layer name)",
+            default = False)
+
     geometryUV = BoolProperty(
             name = "UV",
             description = "Within geometry export vertex UV",
+            default = True,
+            update = update_func)
+
+    geometryUV2 = BoolProperty(
+            name = "UV2",
+            description = "Within geometry export vertex UV2 (append _UV2 to the texture name)",
             default = True,
             update = update_func)
 
@@ -535,6 +556,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.separator()
             row.prop(settings, "modifiersRes", expand=True)
 
+        box.prop(settings, "selectErrors")
         box.prop(settings, "forceElements")
         box.prop(settings, "merge")
         box.prop(settings, "geometrySplit")
@@ -546,9 +568,10 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row = box.row()
         row.prop(settings, "skeletons")
         row.label("", icon='BONE_DATA')
-        #if settings.skeletons:
-            #row = box.row()
-            #row.separator()
+        if settings.skeletons:
+            row = box.row()
+            row.separator()
+            row.prop(settings, "derigify")
             #row.prop(settings, "bonesGlobalOrigin")
             #row.prop(settings, "actionsGlobalOrigin")
 
@@ -560,13 +583,14 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row = box.row()
             row.separator()
             column = row.column()
-            column.prop(settings, "actions")
-            if settings.actions:
-                row = column.row()
-                row.separator()
-                row.prop(settings, "onlyUsedActions")
-            column.prop(settings, "tracks")
-            column.prop(settings, "timeline")
+            column.prop(settings, "animationSource")
+            #column.prop(settings, "actions")
+            #if settings.actions:
+            #    row = column.row()
+            #    row.separator()
+            #    row.prop(settings, "onlyUsedActions")
+            #column.prop(settings, "tracks")
+            #column.prop(settings, "timeline")
             column.prop(settings, "onlyKeyedBones")
             row = column.row()
             row.prop(settings, "animationPos")
@@ -581,7 +605,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.separator()
             row.prop(settings, "geometryPos")
             row.prop(settings, "geometryNor")
+            
+            row = box.row()
+            row.separator()
             row.prop(settings, "geometryUV")
+            row.prop(settings, "geometryUV2")
+
             row = box.row()
             row.separator()
             col = row.column()
@@ -590,8 +619,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             col = row.column()
             col.enabled = settings.skeletons
             col.prop(settings, "geometryWei")
+            
+            row = box.row()
+            row.separator()
             row.prop(settings, "geometryCol")
-
+            row.prop(settings, "geometryColAlpha")
+        
         row = box.row()
         row.enabled = settings.geometries
         row.prop(settings, "morphs")
@@ -611,6 +644,10 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row = box.row()
         row.prop(settings, "textures")
         row.label("", icon='TEXTURE_DATA')
+
+#--------------------
+# Register Unregister
+#--------------------
         
 # This is a test to set the default path if the path edit box is empty        
 def PostLoad(dummy):
@@ -623,7 +660,7 @@ def PostLoad(dummy):
 # Called when the addon is enabled. Here we register out UI classes so they can be 
 # used by Python scripts.
 def register():
-    print("Urho export register")
+    if DEBUG: print("Urho export register")
     
     #bpy.utils.register_module(__name__)
         
@@ -650,7 +687,7 @@ def register():
 
 # Called when the addon is disabled. Here we remove our UI classes.
 def unregister():
-    print("Urho export unregister")
+    if DEBUG: print("Urho export unregister")
     
     #bpy.utils.unregister_module(__name__)
     
@@ -667,6 +704,60 @@ def unregister():
     #    bpy.app.handlers.load_post.remove(PostLoad)
 
 
+#--------------------
+# Blender UI utility
+#--------------------
+
+# Select vertices on a object
+def selectVertices(context, objectName, indicesList):
+
+    objects = context.scene.objects
+    
+    try:
+        obj = objects[objectName]
+    except KeyError:
+        log.error( "Cannot select vertices on not found object {:s}".format(objectName) )
+        return
+
+    # Set the object as current
+    objects.active = obj
+    # Enter Edit mode
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    # Deselect all
+    bpy.ops.mesh.select_all(action='DESELECT')
+    # Save the current select mode
+    sel_mode = bpy.context.tool_settings.mesh_select_mode
+    # Set Vertex select mode
+    bpy.context.tool_settings.mesh_select_mode = [True, False, False]
+    # Exit Edit mode
+    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+    # Select the vertices
+    mesh = obj.data
+    for index in indicesList:
+        try:
+            mesh.vertices[index].select = True
+        #except KeyError:
+        except IndexError:
+            pass
+    # Back in Edit mode   
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    # Restore old selection mode
+    bpy.context.tool_settings.mesh_select_mode = sel_mode 
+
+
+# Select vertices on a object
+def composePath(path, standardDir, useStandardDirs):
+    if useStandardDirs:
+        path = os.path.join(path, standardDir)
+
+    if not os.path.isdir(path):
+        log.info( "Creating path {:s}".format(path) )
+        os.makedirs(path)
+        
+    return path
+
+#-------------------------------------------------------------------------
+# Export main
 #-------------------------------------------------------------------------
     
 def ExecuteUrhoExport(context):
@@ -682,11 +773,13 @@ def ExecuteUrhoExport(context):
     # Get exporter UI settings
     settings = context.scene.urho_exportsettings
     
-    # List where to store tData (decomposed object)
+    # Dictionary container for errors
+    errorsDict = {}
+    # List where to store tData (decomposed objects)
     tDataList = []
     # Decompose options
     tOptions = TOptions()
-        
+    
     # Copy from exporter UI settings to Decompose options
     tOptions.mergeObjects = settings.merge
     tOptions.doForceElements = settings.forceElements
@@ -698,11 +791,15 @@ def ExecuteUrhoExport(context):
     tOptions.applySettings = settings.modifiersRes
     tOptions.doBones = settings.skeletons
     tOptions.doOnlyKeyedBones = settings.onlyKeyedBones
+    tOptions.derigifyArmature = settings.derigify
     tOptions.doAnimations = settings.animations
-    tOptions.doActions = settings.actions
-    tOptions.doOnlyUsedActions = settings.onlyUsedActions
-    tOptions.doTracks = settings.tracks
-    tOptions.doTimeline = settings.timeline
+    tOptions.doAllActions = (settings.animationSource == 'ALL_ACTIONS')
+    tOptions.doUsedActions = (settings.animationSource == 'USED_ACTIONS')
+    tOptions.doSelectedStrips = (settings.animationSource == 'SELECTED_STRIPS')
+    tOptions.doSelectedTracks = (settings.animationSource == 'SELECTED_TRACKS')
+    tOptions.doStrips = (settings.animationSource == 'ALL_STRIPS')
+    tOptions.doTracks = (settings.animationSource == 'ALL_TRACKS')
+    tOptions.doTimeline = (settings.animationSource == 'TIMELINE')
     tOptions.doAnimationPos = settings.animationPos
     tOptions.doAnimationRot = settings.animationRot
     tOptions.doAnimationSca = settings.animationSca
@@ -710,7 +807,9 @@ def ExecuteUrhoExport(context):
     tOptions.doGeometryPos = settings.geometryPos
     tOptions.doGeometryNor = settings.geometryNor
     tOptions.doGeometryCol = settings.geometryCol
+    tOptions.doGeometryColAlpha = settings.geometryColAlpha
     tOptions.doGeometryUV  = settings.geometryUV
+    tOptions.doGeometryUV2  = settings.geometryUV2
     tOptions.doGeometryTan = settings.geometryTan
     tOptions.doGeometryWei = settings.geometryWei
     tOptions.doMorphs = settings.morphs
@@ -726,9 +825,9 @@ def ExecuteUrhoExport(context):
         log.warning("Probably you should use Origin = Global")
 
     # Decompose
-    ttt = time.time() #!TIME
-    Scan(context, tDataList, tOptions)
-    print("[TIME] Decompose in {:.4f} sec".format(time.time() - ttt) ) #!TIME
+    if DEBUG: ttt = time.time() #!TIME
+    Scan(context, tDataList, tOptions, errorsDict)
+    if DEBUG: print("[TIME] Decompose in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 
     if not settings.outputPath:
         log.error( "Output path is not set" )
@@ -736,27 +835,23 @@ def ExecuteUrhoExport(context):
 
     # Export each decomposed object
     for tData in tDataList:
+    
+        #PrintAll(tData)
+        
         log.info("---- Exporting {:s} ----".format(tData.objectName))
 
         uExportData = UrhoExportData()
         uExportOptions = UrhoExportOptions()
         uExportOptions.splitSubMeshes = settings.geometrySplit
 
-        ttt = time.time() #!TIME
-        UrhoExport(tData, uExportOptions, uExportData)
-        print("[TIME] Export in {:.4f} sec".format(time.time() - ttt) ) #!TIME
-        ttt = time.time() #!TIME
+        if DEBUG: ttt = time.time() #!TIME
+        UrhoExport(tData, uExportOptions, uExportData, errorsDict)
+        if DEBUG: print("[TIME] Export in {:.4f} sec".format(time.time() - ttt) ) #!TIME
+        if DEBUG: ttt = time.time() #!TIME
 
-        #PrintUrhoData(uExportData, 0)
-        #PrintUrhoData(uExportData, PRINTMASK_COORD | PRINTMASK_NORMAL | PRINTMASK_TANGENT | PRINTMASK_WEIGHT)
-        
-        modelsPath = settings.outputPath
-        if settings.useStandardDirs:
-            modelsPath = os.path.join(modelsPath, 'Models')
+        #PrintUrhoData(uExportData, "FIRST20,POS,COLOR")
 
-        if not os.path.isdir(modelsPath):
-            log.info( "Creating path {:s}".format(modelsPath) )
-            os.makedirs(modelsPath)
+        modelsPath = composePath(settings.outputPath, "Models", settings.useStandardDirs)
             
         for uModel in uExportData.models:
             if uModel.geometries:
@@ -777,64 +872,69 @@ def ExecuteUrhoExport(context):
             else:
                 log.error( "File already exist {:s}".format(filename) )
     
+        if settings.textures:
+            texturesPath = composePath(settings.outputPath, "Textures", settings.useStandardDirs)
+            texturesList = []
+            for uMaterial in uExportData.materials:
+                for i in range(0, uMaterial.getTexturesNumber()):
+                    textureName = uMaterial.getTextureName(i)
+                    if textureName is None or textureName in texturesList:
+                        continue
+                    texturesList.append(textureName)
+                    
+                    image = bpy.data.images[textureName]
+                    if image is None:
+                        uMaterial.setTextureName(i, None)
+                        continue
+
+                    if '.' not in textureName:
+                        textureName += '.png'
+                        uMaterial.setTextureName(i, textureName)
+                    
+                    srcFilename = bpy.path.abspath(image.filepath)
+                    filename = os.path.join(texturesPath, textureName)                
+                    
+                    if image.packed_file:
+                        originalPath = image.filepath
+                        image.filepath = filename
+                        image.save()
+                        # TODO: this gives errors if the path does not exist. 
+                        # What to do? set it to None? replace with the new?
+                        image.filepath = originalPath  
+                        log.info( "Texture unpacked {:s}".format(filename) )
+                    elif not os.path.exists(srcFilename):
+                        log.error( "Cannot find texture {:s}".format(srcFilename) )
+                    elif not os.path.exists(filename) or settings.fileOverwrite:
+                        try:
+                            shutil.copyfile(src = srcFilename, dst = filename)
+                            log.info( "Texture copied {:s}".format(filename) )
+                        except:
+                            log.error( "Cannot copy texture in {:s}".format(filename) )
+                    else:
+                        log.error( "File already exist {:s}".format(filename) )
+
         if settings.materials:
-            materailsPath = settings.outputPath
-            if settings.useStandardDirs:
-                materailsPath = os.path.join(materailsPath, 'Materials')
-
-            if not os.path.isdir(materailsPath):
-                log.info( "Creating path {:s}".format(materailsPath) )
-                os.makedirs(materailsPath)
-
-            for tMaterial in tData.materialsList:
-                if not tMaterial.name or not tMaterial.imageName:
-                    continue
-                filename = os.path.join(materailsPath, tMaterial.name + os.path.extsep + "xml")
+            materailsPath = composePath(settings.outputPath, "Materials", settings.useStandardDirs)
+            for uMaterial in uExportData.materials:
+                filename = os.path.join(materailsPath, uMaterial.name + os.path.extsep + "xml")
                 if not os.path.exists(filename) or settings.fileOverwrite:
                     log.info( "Creating file {:s}".format(filename) )
-                    UrhoWriteMaterial(tMaterial, filename, settings.useStandardDirs)
+                    UrhoWriteMaterial(uMaterial, filename, settings.useStandardDirs)
                 else:
                     log.error( "File already exist {:s}".format(filename) )
+                    
+        if DEBUG: print("[TIME] Write in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 
-        if settings.textures:
-            texturesPath = settings.outputPath
-            if settings.useStandardDirs:
-                texturesPath = os.path.join(texturesPath, 'Textures')
-
-            if not os.path.isdir(texturesPath):
-                log.info( "Creating path {:s}".format(texturesPath) )
-                os.makedirs(texturesPath)
-
-            for tMaterial in tData.materialsList:
-                if not tMaterial.name or not tMaterial.image:
-                    continue
-                filename = os.path.join(texturesPath, tMaterial.imageName)
-                
-                if '.' not in filename:
-                    filename += '.png'
-                
-                image = tMaterial.image
-                if image.packed_file:
-                    originalPath = image.filepath
-                    image.filepath = filename
-                    image.save()
-                    # TODO: this gives errors if the path does not exist. 
-                    # What to do? set it to None? replace with the new?
-                    image.filepath = originalPath  
-                    log.info( "Texture unpacked {:s}".format(filename) )
-                elif not os.path.exists(tMaterial.imagePath):
-                    log.error( "Cannot find texture {:s}".format(tMaterial.imagePath) )
-                elif not os.path.exists(filename) or settings.fileOverwrite:
-                    try:
-                        shutil.copyfile(src = tMaterial.imagePath, dst = filename)
-                        log.info( "Texture copied {:s}".format(filename) )
-                    except:
-                        log.error( "Cannot copy texture in {:s}".format(filename) )
-                else:
-                    log.error( "File already exist {:s}".format(filename) )
-                
-        print("[TIME] Write in {:.4f} sec".format(time.time() - ttt) ) #!TIME
-        
+    if settings.selectErrors:
+        indices = set()
+        for key, value in errorsDict.items():
+            if not value or not type(value) is set:
+                continue
+            log.warning( "Selecting {:d} vertices with '{:s}' errors".format(len(value), key) )
+            indices.update(value)
+        if indices:
+            selectVertices(context, tData.objectName, indices)
+    
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     
     bpy.ops.urho.report('INVOKE_DEFAULT')
