@@ -1672,7 +1672,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
 #--------------------
 
 # Scan and decompose objects
-def Scan(context, tDataList, tOptions, errorsDict):
+def Scan(context, tDataList, tOptions):
     
     scene = context.scene
     
@@ -1765,7 +1765,7 @@ def Scan(context, tDataList, tOptions, errorsDict):
 
             # Decompose geometries
             if tOptions.doGeometries:
-                DecomposeMesh(scene, obj, tData, tOptions, errorsDict)
+                DecomposeMesh(scene, obj, tData, tOptions, tData.errorsDict)
 
     if noWork:
         log.warning("No objects to work on")

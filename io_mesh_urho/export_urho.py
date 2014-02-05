@@ -76,22 +76,46 @@ LINE_LIST           = 1
 # Max number of bones supported by HW skinning
 MAX_SKIN_MATRICES   = 64
 
+#--------------------
+# Float comparison
+#--------------------
+
 # Max difference between floats to be equal
 EPSILON = 1e-6
 
+# Max difference between floats to be equal
+INFINITY = float("+inf")
+
+# Returns True is v1 and v2 are both None or their corresponding elements are almost equal
 def FloatListAlmostEqual(v1, v2):
-    c = (v1 is None) + (v2 is None)
-    if c == 2:
-        return True
-    if c == 1:
+    if v1 is None:
+        return v2 is None
+    if v2 is None:
         return False
-    for e1,e2 in zip(v1,v2):
-        if abs(e1-e2) > EPSILON:
+    for e1, e2 in zip(v1, v2):
+        if abs(e1 - e2) > EPSILON:
             return False
     return True
-    #return sum( abs(a-b) for a,b in zip(v1,v2) ) < EPSILON
-    #return (self.pos - other.pos).length < EPSILON
-            
+
+def RelativeAbs(e1, e2):
+    if e1 == 0 and e2 == 0:
+        return 0
+    diff = abs(e1-e2)
+    if diff < EPSILON:
+        return 0
+    return d / max(abs(e1),abs(e2))
+    
+def FloatListEqualError(v1, v2):
+    if v1 is None:
+        if v2 is None:
+            return 0
+        else:
+            return INFINITY
+    if v2 is None:
+        return INFINITY
+    #return sum(RelativeAbs(e1, e2) for e1, e2 in zip(v1, v2))
+    return sum(abs(e1 - e2) for e1, e2 in zip(v1, v2))
+    
 #--------------------
 # Classes
 #--------------------
@@ -127,7 +151,6 @@ class MaskError(Exception):
 
 # --- Model classes ---
 
-cnt=0
 class UrhoVertex:
     def __init__(self, tVertex, uVertexBuffer):
         # Note: cannot pass elementMask directly because it is immutable
@@ -185,34 +208,10 @@ class UrhoVertex:
     
     # used by the function index() of lists
     def __eq__(self, other):
-        #return (self.pos == other.pos and self.normal == other.normal and 
-        #        self.color == other.color and self.uv == other.uv)
-        # !!! TODO: None and !None
-        #if self.pos and other.pos and (self.pos - other.pos).length > EPSILON:
-        print("x")
-        if not FloatListAlmostEqual(self.pos, other.pos):
-            return False
-        #if self.normal and other.normal and (self.normal - other.normal).length > EPSILON:
-        if not FloatListAlmostEqual(self.normal, other.normal):
-            global cnt
-            cnt+=1
-            if (cnt > 100):
-                return False
-            v = self.normal
-            print("   1: {:f} {:f} {:f}".format(v.x, v.y, v.z))
-            v = other.normal
-            print("   2: {:f} {:f} {:f}".format(v.x, v.y, v.z))
-            return False
-        if self.color != other.color:
-            return False
-        #if self.uv and other.uv and abs(self.uv[0] - other.uv[0]) + abs(self.uv[1] - other.uv[1]) > EPSILON:
-        if not FloatListAlmostEqual(self.uv, other.uv):
-            return False
-        #if self.uv2 and other.uv2 and abs(self.uv2[0] - other.uv2[0]) + abs(self.uv2[1] - other.uv2[1]) > EPSILON:
-        if not FloatListAlmostEqual(self.uv2, other.uv2):
-            return False
-        return True
+        return (self.pos == other.pos and self.normal == other.normal and 
+                self.color == other.color and self.uv == other.uv)
 
+    # compare position, normal, color, UV, UV2 with another vertex, returns True is the error is insignificant
     def AlmostEqual(self, other):
         if not FloatListAlmostEqual(self.pos, other.pos):
             return False
@@ -226,24 +225,24 @@ class UrhoVertex:
             return False
         return True
 
-    def LodAlmostEqual(self, other):
-        return FloatListAlmostEqual(self.pos, other.pos)
+    # compare position, normal, UV with another vertex, returns the error
+    # TODO: bad error, it must be relative to values not absolute
+    def LodError(self, other):
+        if not FloatListAlmostEqual(self.pos, other.pos):
+            return INFINITY
+        return (FloatListEqualError(self.uv, other.uv) / 2 +
+                FloatListEqualError(self.normal, other.normal) / 6)
 
-    # id of this vertex (not unique)
+    # not unique id of this vertex based on its position
     def __hash__(self):
         hashValue = 0
         if self.pos:
             hashValue ^= hash(self.pos.x) ^ hash(self.pos.y) ^ hash(self.pos.z)
-        # !!!
-        #if self.normal:
-        #    hashValue ^= hash(self.normal.x) ^ hash(self.normal.y) ^ hash(self.normal.z)
-        #if self.uv:
-        #    hashValue ^= hash(self.uv.x) ^ hash(self.uv.y)
         return hashValue
 
     # used by moprh vertex calculations
     def subtract(self, other, mask):
-        # !!! bitangent? tangnet .w?
+        # TODO: !!! bitangent? tangnet .w? do not touch .w
         if mask & ELEMENT_POSITION:
             self.pos -= other.pos
         if mask & ELEMENT_NORMAL:
@@ -448,6 +447,7 @@ class UrhoExportData:
 class UrhoExportOptions:
     def __init__(self):
         self.splitSubMeshes = False
+        self.useStrictLods = True
                 
 
 #--------------------
@@ -905,13 +905,13 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
             uLodLevel.distance = tLodLevel.distance
             uLodLevel.primitiveType = TRIANGLE_LIST
 
-            # If needed add a new vertex buffer (only for first lod of a geometry)
+            # If needed add a new vertex buffer (only for first LOD of a geometry)
             if vertexBuffer is None or (i == 0 and not useOneBuffer):
                 vertexBuffer = UrhoVertexBuffer()
                 uModel.vertexBuffers.append(vertexBuffer)
                 uVerticesMap = {}
 
-            # If needed add a new index buffer (only for first lod of a geometry)
+            # If needed add a new index buffer (only for first LOD of a geometry)
             if indexBuffer is None or (i == 0 and not useOneBuffer):
                 indexBuffer = UrhoIndexBuffer()
                 uModel.indexBuffers.append(indexBuffer)
@@ -932,7 +932,6 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
             for tVertexIndex in tLodLevel.indexSet:
             
                 tVertex = tData.verticesList[tVertexIndex]
-                #print(str(tVertexIndex) + " " + str(tVertex.pos)) # !!!
 
                 # Create a Urho vertex
                 try:
@@ -957,41 +956,31 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                     uVerticesMapList = []
                     uVerticesMap[uVertexHash] = uVerticesMapList
                 
-                # For each index in the list, get the corresponding vertex and test if it is equal to tVertex.
-                # If Position, Normal and UV are the same, it must be the same vertex, get its index.
                 uVertexIndex = None
-                for ivl in uVerticesMapList:
-                    ## !!!
-                    uListedVertex = vertexBuffer.vertices[ivl]
-                    #if vertexBuffer.vertices[ivl] == uVertex:
-                    #if vertexBuffer.vertices[ivl].pos == uVertex.pos:
-                    #if (i == 0 and uListedVertex.AlmostEqual(uVertex)) or (i != 0 and uListedVertex.LodAlmostEqual(uVertex)) :
-                    if uListedVertex.AlmostEqual(uVertex):
-                        uVertexIndex = ivl
-                        break
-
-                ##if i == 0 or uVertexIndex is None:
-                ##    print("i:" + str(i) + " pos:" + str(uVertex.pos) + " " + str(len(uVerticesMapList)) )
+                if i == 0 or uExportOptions.useStrictLods:
+                    # For each index in the list, get the corresponding vertex and test if it is equal to tVertex.
+                    # If Position, Normal and UV are the same, it must be the same vertex, get its index.
+                    for ivl in uVerticesMapList:
+                        if vertexBuffer.vertices[ivl].AlmostEqual(uVertex):
+                            uVertexIndex = ivl
+                            break
+                else:
+                    # For successive LODs, we are more permissive, the vertex position must be the same, but for
+                    # the normal and UV we will search the best match in the vertices available.
+                    bestLodError = INFINITY
+                    for ivl in uVerticesMapList:
+                        lodError = vertexBuffer.vertices[ivl].LodError(uVertex)
+                        if lodError < bestLodError:
+                            bestLodError = lodError
+                            uVertexIndex = ivl
 
                 # If we cannot find it, the vertex is new, add it to the list, and its index to the map list
                 if uVertexIndex is None:
-                    if i != 0:
-                        #print("pos: " + str(uVertex.pos))
-                        for ivl in uVerticesMapList:
-                            if vertexBuffer.vertices[ivl].pos == uVertex.pos:
-                                v1 = uVertex.normal
-                                v2 = vertexBuffer.vertices[ivl].normal
-                                #if v1 != v2:
-                                    #print("-" + str(v1))
-                                    #print("   1: {:f} {:f} {:f}".format(v1.x, v1.y, v1.z))
-                                    #print("   2: {:f} {:f} {:f}".format(v2.x, v2.y, v2.z))
-                                    #print("diff: {:e} {:e} {:e}".format(v1.x-v2.x, v1.y-v2.y, v1.z-v2.z))
                     uVertexIndex = len(vertexBuffer.vertices)
                     vertexBuffer.vertices.append(uVertex)
                     uVerticesMapList.append(uVertexIndex)
                     if i != 0:
                         log.warning("LOD {:d} of object {:s} has new vertices.".format(i, uModel.name))
-                        
                 
                 # Populate the 'old tVertex index' to 'new uVertex index' map
                 if not tVertexIndex in indexMap:

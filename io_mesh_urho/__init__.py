@@ -193,6 +193,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.merge = False
         self.geometrySplit = False
         self.lods = False
+        self.strictLods = True
         self.optimizeIndices = False
 
         self.skeletons = False
@@ -304,6 +305,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Search for the LOD distance if the object name, objects with the same name are added as LODs",
             default = False)
 
+    strictLods = BoolProperty(
+            name = "Strict LODs",
+            description = "Add a new vertex if the LOD0 does not contain a vertex with the exact same position, normal and UV",
+            default = True)
+            
     optimizeIndices = BoolProperty(
             name = "Optimize indices (slow)",
             description = "Linear-Speed vertex cache optimisation",
@@ -560,8 +566,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         box.prop(settings, "forceElements")
         box.prop(settings, "merge")
         box.prop(settings, "geometrySplit")
-        box.prop(settings, "lods")
         box.prop(settings, "optimizeIndices")
+        box.prop(settings, "lods")
+        if settings.lods:
+            row = box.row()
+            row.separator()
+            row.prop(settings, "strictLods")
 
         box = layout.box()
 
@@ -721,16 +731,19 @@ def selectVertices(context, objectName, indicesList):
 
     # Set the object as current
     objects.active = obj
-    # Enter Edit mode
-    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    # Enter Edit mode (check poll() to avoid exception)
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
     # Deselect all
-    bpy.ops.mesh.select_all(action='DESELECT')
+    if bpy.ops.mesh.select_all.poll():
+        bpy.ops.mesh.select_all(action='DESELECT')
     # Save the current select mode
     sel_mode = bpy.context.tool_settings.mesh_select_mode
     # Set Vertex select mode
     bpy.context.tool_settings.mesh_select_mode = [True, False, False]
     # Exit Edit mode
-    bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
     # Select the vertices
     mesh = obj.data
     for index in indicesList:
@@ -739,8 +752,9 @@ def selectVertices(context, objectName, indicesList):
         #except KeyError:
         except IndexError:
             pass
-    # Back in Edit mode   
-    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    # Back in Edit mode
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
     # Restore old selection mode
     bpy.context.tool_settings.mesh_select_mode = sel_mode 
 
@@ -773,8 +787,6 @@ def ExecuteUrhoExport(context):
     # Get exporter UI settings
     settings = context.scene.urho_exportsettings
     
-    # Dictionary container for errors
-    errorsDict = {}
     # List where to store tData (decomposed objects)
     tDataList = []
     # Decompose options
@@ -826,7 +838,7 @@ def ExecuteUrhoExport(context):
 
     # Decompose
     if DEBUG: ttt = time.time() #!TIME
-    Scan(context, tDataList, tOptions, errorsDict)
+    Scan(context, tDataList, tOptions)
     if DEBUG: print("[TIME] Decompose in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 
     if not settings.outputPath:
@@ -841,11 +853,13 @@ def ExecuteUrhoExport(context):
         log.info("---- Exporting {:s} ----".format(tData.objectName))
 
         uExportData = UrhoExportData()
+        
         uExportOptions = UrhoExportOptions()
         uExportOptions.splitSubMeshes = settings.geometrySplit
+        uExportOptions.useStrictLods = settings.strictLods
 
         if DEBUG: ttt = time.time() #!TIME
-        UrhoExport(tData, uExportOptions, uExportData, errorsDict)
+        UrhoExport(tData, uExportOptions, uExportData, tData.errorsDict)
         if DEBUG: print("[TIME] Export in {:.4f} sec".format(time.time() - ttt) ) #!TIME
         if DEBUG: ttt = time.time() #!TIME
 
@@ -925,15 +939,15 @@ def ExecuteUrhoExport(context):
                     
         if DEBUG: print("[TIME] Write in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 
-    if settings.selectErrors:
-        indices = set()
-        for key, value in errorsDict.items():
-            if not value or not type(value) is set:
-                continue
-            log.warning( "Selecting {:d} vertices with '{:s}' errors".format(len(value), key) )
-            indices.update(value)
-        if indices:
-            selectVertices(context, tData.objectName, indices)
+        if settings.selectErrors:
+            indices = set()
+            for key, value in tData.errorsDict.items():
+                if not value or not type(value) is set:
+                    continue
+                log.warning( "Selecting {:d} vertices on {:s} with '{:s}' errors".format(len(value), tData.objectName, key) )
+                indices.update(value)
+            if indices:
+                selectVertices(context, tData.objectName, indices)
     
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     
