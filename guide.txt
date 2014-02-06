@@ -1,0 +1,155 @@
+
+io_mesh_urho v0.4
+
+This is a Blender addon that helps you exporting your meshes, armatures, animations and materials to Urho3D.
+It is an amateur work, done with little knowledge of Urho3D and Blender, but I hope it helps.
+Public domain license. Maintained by reattiva (you can contact me @gmail.com).
+
+This is a Blender addon that helps exporting meshes, armatures, animations and materials to Urho3D.
+Public domain license. No warranty, no guarantee, use it at your own risk.
+Maintained by reattiva (you can contact me @gmail.com). This is third-party software independent from the
+Urho3D project, so do not contact them for support or bugs.
+
+ Installation
+--------------
+- download the zip file, don't unzip it;
+- if you don't have the zip, create a folder 'io_mesh_urho', copy inside these 3 files:
+  __init__.py, decompose.py, export_urho.py
+  then zip the folder (you need the folder 'io_mesh_urho' in the zip file);
+- open Blender;
+- open 'user preferences' (Ctrl+Alt+U);
+- click 'Addons' on the top bar;
+- click 'Install from file...' on the bottom bar;
+- select the zip file;
+- now search in the list, you should see a greyed line named 'Import-Export: Urho3D export';
+- click on the checkbox on the right to enable the addon (see below if you can't set the checkbox);
+- optional: click 'Save User Settings' to remember this addon as enabled.
+
+ Uncheckable box
+----------------
+If you can't check the checkbox, there is an error in the exporter and I'll try to fix it. In the 'Window' menu
+of Blender, select 'Toggle System Console' to see the error, copy and email it to me, thank you.
+
+ Exporter location in Blender
+------------------------------
+The exporter is located in:
+- Properties panel, by default it is the panel in the right bottom corner, its icon is an horizontal scrollbar
+- Render page (camera icon, it is the forst icon in the panel)
+- towards the bottom of the panel (near Output and Bake sections), it is called 'Urho export'
+
+================
+ Exporter panel
+================
+
+- Button 'Export'
+This button starts the export process using the current options.
+- Page icon on the right
+This button shows you the log of the last export process.
+
+- 'Output folder'
+This is where the exported files will be created. Click the folder icon on the right to browse and choose 
+the folder.
+- 'Use Urho standard folders'
+Instead of using the folder above, it creates the sub-folder 'Models' to store meshes and animations, the 
+sub-folder 'Textures' to store texture and the sub-folder 'Materials' to store materials.
+- 'Files overwrite'
+By default existing files are not overwritten by the exporter, this option enables overwriting files.
+
+- Blank page icon on the right
+Restore the default options.
+- Objects
+Select what objects you want to export:
+  'All' export all the objects in the scene (hidden and moved included).
+  'Only selected' export only the selected objects.
+- Origin
+Set the meshes origin:
+  'Global' the origin of all the meshes will be the Blender global origin (the center of the grid).
+  'Local' for each mesh the origin will be the object center (little orange dot).
+- Scale
+Apply a scale transformation on the object exported.
+- Apply Modifier
+If an object has some modifiers stacked, apply them to the mesh before exporting (with Preview or Render settings).
+- Select vertices with errors
+If a vertex has an error (missing element, invalid UV...), when the exporting is done go to Edit mode and select it.
+- Force missing elements
+Vertices can have different elements (position, normal, UV, bone weight), when you export a mesh you can choose 
+which elements you want to export (see Geometries below). If a vertex in the mesh does not have an element selected
+to be exported, an error is generated. This option prevents these errors forcing the missing elements to a default
+value. (You should not use this option but instead try to correct the errors).
+- Merge objects
+Merge all the objects exported in one Urho model (with different geometries).
+- One vertex buffer per object
+Split each object into its own vertex buffer. If we can use a 16 bits index (instead of 32) when we use a buffer per
+object, then this option is automatically selected.
+- Use LODs
+Export each 'Level Of Details' (LOD) present for each object (see LOD below).
+- Optimize indices
+Try to sort triangles in the index buffer to gain an optimal use of the hardware vertices cache. In other words, this
+option can speed up the rendering of the mesh. It can be very slow (5 minutes for 30K smooth vertices on an average pc).
+
+- Skeletons
+Export the object armature (skeleton).
+  - Derigify
+  Try to remove the control bones (.ORG) from the Rigify armature and keeps only the deform bones. (Not fully tested)
+- Animations
+Export the armature animations. It requires skeleton.
+  'Timeline'
+  'All tracks (not muted)'
+  'All Strips'
+  'Selected Tracks'
+  'Selected Strips'
+  'Actions used in tracks'
+  'All Actions'
+  - Only keyed bones: export only animation of bones with an animation key.
+  - Position, Rotation, Scale: select what animation data to export.
+- Geometries
+Here you can select what vertex data to export:
+  - Position: export vertices positions
+  - Normal: export vertices normals
+  - UV, UV2: export vertices UV coordinates (see UV below)
+  - Tangent: export vertices tangents
+  - Weights: export vertices bones weights
+  - Color, Alpha: export vertices colors (see Colors below)
+- Morphs
+Export shape keys (Morphs):
+  - Normal: export morphed vertices normals
+  - Tangent: export morphed vertices tangents
+- Export materials
+
+- Copy textures  
+Copy the textures used by the objects materials to the output folder. Sometimes this does not work, especially when
+the images are embedded in the blend file are no format was specified for them.
+
+=====
+ LOD
+=====
+To create a LOD: append to the object name "_LOD00.0" (for example "house_LOD00.0"), duplicate the object, rename it
+changing the number after '_LOD' with the distance up to this LOD is visible (for example "house_LOD00.0"), reduce its
+vertices (you can use the decimator modifier), repeat these two steps until you have the desired number of LODs.
+You can use float or integer numbers, it is important that the numbers are right aligned in the object names.
+For example: house_LOD005, house_LOD010, house_LOD100... but not: house_LOD5, house_LOD10, house_LOD100...
+
+=====
+ UV
+=====
+To export UV you need an UV map, you can see the list in the Data page of the current selected object.
+The Urho MDL format supports two sets of UV coordinates. You can specify what maps to use by appending "_UV1" or
+"_UV2" to the layer name. These suffixes can be used together but also alone, if they are missing the first used
+layer will be choosen.
+If the exporter reports some "Invalid UV" this means that some triangles of the mesh are mapped in the UV map to
+triangles with an area null or too small. You need to increase the area in the UV map, you can set the option
+'Select vertices with errors' to find these triangles.
+
+========
+ Colors
+========
+To export vertex colors you need an Color map, you can see the list in the Data page of the current selected object.
+Blender colors do not support have alpha, so if you need alpha you need two Color maps, one for the color and one for
+the alpha. You need to specify these maps by appending "_RGB" and "_ALPHA" respectively to the layer name. These
+suffixes can be used together but also alone, if they are missing the first layer will be choosen for RGB only.
+For the alpha color layer use a scale of grey (black=transparent, white=opaque), starting from black or white you can
+use the Value slider (V in HSV) to easy change a greyscale color.
+
+
+
+

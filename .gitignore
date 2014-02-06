@@ -4,5 +4,6 @@ io_mesh_urho/testing.py
 
 !.gitignore
 !LICENSE
-!Readme.txt
+!README
+!guide.txt
 !io_mesh_urho/
