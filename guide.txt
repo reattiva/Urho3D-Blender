@@ -12,17 +12,15 @@ Urho3D project, so do not contact them for support or bugs.
 
  Installation
 --------------
-- download the zip file, don't unzip it;
-- if you don't have the zip, create a folder 'io_mesh_urho', copy inside these 3 files:
-  __init__.py, decompose.py, export_urho.py
-  then zip the folder (you need the folder 'io_mesh_urho' in the zip file);
+- download the zip file from GitHub and unzip it;
+- select the folder 'io_mesh_urho' and re-create a zip file (you need the folder 'io_mesh_urho' in the zip file);
 - open Blender;
 - open 'user preferences' (Ctrl+Alt+U);
 - click 'Addons' on the top bar;
 - click 'Install from file...' on the bottom bar;
-- select the zip file;
+- select your created zip file;
 - now search in the list, you should see a greyed line named 'Import-Export: Urho3D export';
-- click on the checkbox on the right to enable the addon (see below if you can't set the checkbox);
+- click on the checkbox on the right to enable the addon (see below if you can't set the check);
 - optional: click 'Save User Settings' to remember this addon as enabled.
 
  Uncheckable box
@@ -83,6 +81,10 @@ Split each object into its own vertex buffer. If we can use a 16 bits index (ins
 object, then this option is automatically selected.
 - Use LODs
 Export each 'Level Of Details' (LOD) present for each object (see LOD below).
+  - Strict LODs
+  If ON, the LOD will probably have new vertices and your LOD will be accurate as you see it in Blender. 
+  If OFF, the LOD will try to use vertices of the first LOD and you could see some acceptable distorsions caused by 
+  slightly off normals.
 - Optimize indices
 Try to sort triangles in the index buffer to gain an optimal use of the hardware vertices cache. In other words, this
 option can speed up the rendering of the mesh. It can be very slow (5 minutes for 30K smooth vertices on an average pc).
