@@ -67,7 +67,7 @@ class TVertex:
         self.uv = None
         # UV2 coordinates of the vertex: Vector((0.0, 0.0))..Vector((1.0, 1.0))
         self.uv2 = None
-        # Tangent of the vertex: Vector((0.0, 0.0, 0.0))
+        # Tangent of the vertex: Vector((0.0, 0.0, 0.0, 0.0))
         self.tangent = None
         # Bitangent of the vertex: Vector((0.0, 0.0, 0.0))
         self.bitangent = None

@@ -226,10 +226,10 @@ class UrhoVertex:
         return True
 
     # compare position, normal, UV with another vertex, returns the error
-    # TODO: bad error, it must be relative to values not absolute
     def LodError(self, other):
         if not FloatListAlmostEqual(self.pos, other.pos):
             return INFINITY
+        # UV are 0..1, normals -1..1, so this absolute error should be good 
         return (FloatListEqualError(self.uv, other.uv) / 2 +
                 FloatListEqualError(self.normal, other.normal) / 6)
 
@@ -239,16 +239,18 @@ class UrhoVertex:
         if self.pos:
             hashValue ^= hash(self.pos.x) ^ hash(self.pos.y) ^ hash(self.pos.z)
         return hashValue
-
-    # used by moprh vertex calculations
+            
+    # used by moprh vertex calculations (see AnimatedModel::ApplyMorph)
     def subtract(self, other, mask):
-        # TODO: !!! bitangent? tangnet .w? do not touch .w
         if mask & ELEMENT_POSITION:
             self.pos -= other.pos
         if mask & ELEMENT_NORMAL:
             self.normal -= other.normal
         if mask & ELEMENT_TANGENT:
             self.tangent -= other.tangent
+            # tangent.w it is not modified by morphs (remember, there we
+            # have saved bitangent direction)
+            self.tangent.w = 0
             
 class UrhoVertexBuffer:
     def __init__(self):
