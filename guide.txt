@@ -5,11 +5,6 @@ This is a Blender addon that helps you exporting your meshes, armatures, animati
 It is an amateur work, done with little knowledge of Urho3D and Blender, but I hope it helps.
 Public domain license. Maintained by reattiva (you can contact me @gmail.com).
 
-This is a Blender addon that helps exporting meshes, armatures, animations and materials to Urho3D.
-Public domain license. No warranty, no guarantee, use it at your own risk.
-Maintained by reattiva (you can contact me @gmail.com). This is third-party software independent from the
-Urho3D project, so do not contact them for support or bugs.
-
  Installation
 --------------
 - download the zip file from GitHub and unzip it;
