@@ -942,7 +942,6 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                     if not tVertex.blenderIndex is None:
                         errorsIndices.add(tVertex.blenderIndex)
                     log.warning("Incompatible vertex element mask in object {:s} ({:s})".format(uModel.name, e))
-                    print("incompatible " + str(tVertex.pos))
                                 
                 # All that this code do is "uVertexIndex = vertexBuffer.vertices.index(uVertex)", but we use
                 # a map to speed up.
