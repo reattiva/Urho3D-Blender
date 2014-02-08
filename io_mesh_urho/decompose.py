@@ -348,7 +348,6 @@ def GenerateTangents(tLodLevel, tVertexList, invalidUvIndices):
         
         # Check if we have already calculated tangents for this vertex and we're overwriting them
         if vertex.tangent:
-            print("x")
             tangentOverwritten = True
             
         # Check if we have all the needed data to do the calculations
@@ -1507,33 +1506,9 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
     if missingGroups:
         log.warning("These group indices are missing: {:s}".format( ", ".join(missingGroups) ))
 
-    #for geometry in geometriesList:
-    #    # Generate tangents (only for first LOD level)
-    #    if tOptions.doGeometryTan and geometry.lodLevels:
-    #        lodLevel = geometry.lodLevels[-1] # era: geometry.lodLevels[0]
-    #        log.info("Generating tangents for {:s} on {:d} indices".format(meshObj.name, len(lodLevel.indexSet)) )
-    #        GenerateTangents(lodLevel, verticesList, invalidUvIndices)
-    #    # Optimize vertex index buffer for each LOD level
-    #    if tOptions.doOptimizeIndices:
-    #        for lodLevel in geometry.lodLevels:
-    #            log.info("Optimizing indices {:s}".format(meshObj.name) )
-    #            OptimizeIndices(lodLevel)
-    
-    #if geometry.lodLevels:
-    #    lodLevel = geometry.lodLevels[-1]
-    #    # Generate tangents for this LOD level
-    #    if tOptions.doGeometryTan:
-    #        log.info("Generating tangents on {:d} indices for {:s}".format(len(lodLevel.indexSet), meshObj.name) )
-    #        GenerateTangents(lodLevel, verticesList, invalidUvIndices)
-    #    # Optimize vertex index buffer for this LOD level
-    #    if tOptions.doOptimizeIndices:
-    #        log.info("Optimizing {:d} indices for {:s}".format(len(lodLevel.indexSet), meshObj.name) )
-    #        OptimizeIndices(lodLevel)
-
     # For each geometries with new vertices
     for geometryIndex in updatedGeometryIndices:
         geometry = geometriesList[geometryIndex]
-        geometriesList[geometryIndex]
         # Only the last LOD was modified (even if it wasn't a new LOD)
         lodLevel = geometry.lodLevels[-1]
         # Generate tangents for this LOD level
