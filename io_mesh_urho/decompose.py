@@ -326,125 +326,127 @@ class TOptions:
 # http://www.terathon.com/code/tangent.html
 #--------------------
         
-def GenerateTangents(tLodLevel, tVertexList, invalidUvIndices):
+def GenerateTangents(tLodLevels, tVertexList, invalidUvIndices):
 
-    if not tLodLevel.indexSet or not tLodLevel.triangleList or not tVertexList:
-        log.warning("Missing data, tangent generation cancelled.")
+    if not tVertexList:
+        log.warning("No vertices, tangent generation cancelled.")
         return
 
-    tangentOverwritten = False
-    minVertexIndex = None
-    maxVertexIndex = None
-    for vertexIndex in tLodLevel.indexSet:
-        if minVertexIndex is None:
-            minVertexIndex = vertexIndex
-            maxVertexIndex = vertexIndex
-        elif minVertexIndex > vertexIndex:
-            minVertexIndex = vertexIndex
-        elif maxVertexIndex < vertexIndex:
-            maxVertexIndex = vertexIndex
-
-        vertex = tVertexList[vertexIndex]
+    # Init the values
+    tangentOverwritten = 0    
+    for tLodLevel in reversed(tLodLevels):
+        if not tLodLevel.indexSet or not tLodLevel.triangleList:
+            log.warning("Empty LOD, tangent generation skipped.")
+            tLodLevels.remove(tLodLevel)
+            continue
         
-        # Check if we have already calculated tangents for this vertex and we're overwriting them
-        if vertex.tangent:
-            tangentOverwritten = True
+        for vertexIndex in tLodLevel.indexSet:
+            vertex = tVertexList[vertexIndex]
             
-        # Check if we have all the needed data to do the calculations
-        if vertex.pos is None:
-            invalidUvIndices.add(vertex.blenderIndex)
-            log.warning("Missing position on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
-            return
-        if vertex.normal is None:
-            invalidUvIndices.add(vertex.blenderIndex)
-            log.warning("Missing normal on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
-            return
-        if vertex.uv is None:
-            invalidUvIndices.add(vertex.blenderIndex)
-            log.warning("Missing UV on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
-            return
-        
-        # Init tangent and bitangent vectors
-        vertex.tangent = Vector((0.0, 0.0, 0.0))
-        vertex.bitangent = Vector((0.0, 0.0, 0.0))
+            # Check if the tangent was already calculated (4 components) for this vertex and we're overwriting it
+            if vertex.tangent and len(vertex.tangent) == 4:
+                tangentOverwritten += 1
+                
+            # Check if we have all the needed data to do the calculations
+            if vertex.pos is None:
+                invalidUvIndices.add(vertex.blenderIndex)
+                log.warning("Missing position on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                return
+            if vertex.normal is None:
+                invalidUvIndices.add(vertex.blenderIndex)
+                log.warning("Missing normal on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                return
+            if vertex.uv is None:
+                invalidUvIndices.add(vertex.blenderIndex)
+                log.warning("Missing UV on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                return
+            
+            # Init tangent (3 components) and bitangent vectors
+            vertex.tangent = Vector((0.0, 0.0, 0.0))
+            vertex.bitangent = Vector((0.0, 0.0, 0.0))
 
     if tangentOverwritten:
-        log.warning("Overwriting tangent and bitangent")
+        log.warning("Overwriting {:d} tangents").format(tangentOverwritten)
 
+    # Calculate tangent and bitangent
     invalidUV = False
-    for i, triangle in enumerate(tLodLevel.triangleList):
-        # For each triangle, we have 3 vertices vertex1, vertex2, vertex3, each of the have their UV coordinates, we want to 
-        # find two unit orthogonal vextors (tangent and bitangent) such as we can express each vertices position as a function
-        # of the vertices UV: 
-        #  VertexPosition = Tangent * f'(VertexUV) + BiTangent * f"(VertexUV)
-        # Actually we are going to express them relatively to a vertex choosen as origin (vertex1):
-        #  vertex - vertex1 = Tangent * (vertex.u - vertex1.u) + BiTangent * (vertex.v - vertex1.v)
-        # We have two equations, one for vertex2-vertex1 and one for vertex3-vertex1, if we put them in a system and solve it
-        # we can obtain Tangent and BiTangent:
-        #  [T; B] = [u1, v1; u2, v2]^-1 * [V2-V1; V3-V1]
-        
-        vertex1 = tVertexList[triangle[0]]
-        vertex2 = tVertexList[triangle[1]]
-        vertex3 = tVertexList[triangle[2]]
+    for tLodLevel in tLodLevels:
+        for i, triangle in enumerate(tLodLevel.triangleList):
+            # For each triangle, we have 3 vertices vertex1, vertex2, vertex3, each of the have their UV coordinates, we want to 
+            # find two unit orthogonal vectors (tangent and bitangent) such as we can express each vertex position as a function
+            # of the vertex UV: 
+            #  VertexPosition = Tangent * f'(VertexUV) + BiTangent * f"(VertexUV)
+            # Actually we are going to express them relatively to a vertex choosen as origin (vertex1):
+            #  vertex - vertex1 = Tangent * (vertex.u - vertex1.u) + BiTangent * (vertex.v - vertex1.v)
+            # We have two equations, one for vertex2-vertex1 and one for vertex3-vertex1, if we put them in a system and solve it
+            # we can obtain Tangent and BiTangent:
+            #  [T; B] = [u1, v1; u2, v2]^-1 * [V2-V1; V3-V1]
+            
+            vertex1 = tVertexList[triangle[0]]
+            vertex2 = tVertexList[triangle[1]]
+            vertex3 = tVertexList[triangle[2]]
 
-        # First equation: [x1, y1, z1] = Tangent * u1 + BiTangent * v1
-        x1 = vertex2.pos.x - vertex1.pos.x
-        y1 = vertex2.pos.y - vertex1.pos.y
-        z1 = vertex2.pos.z - vertex1.pos.z
+            # First equation: [x1, y1, z1] = Tangent * u1 + BiTangent * v1
+            x1 = vertex2.pos.x - vertex1.pos.x
+            y1 = vertex2.pos.y - vertex1.pos.y
+            z1 = vertex2.pos.z - vertex1.pos.z
 
-        u1 = vertex2.uv.x - vertex1.uv.x
-        v1 = vertex2.uv.y - vertex1.uv.y
+            u1 = vertex2.uv.x - vertex1.uv.x
+            v1 = vertex2.uv.y - vertex1.uv.y
 
-        # Second equation: [x2, y2, z2] = Tangent * u2 + BiTangent * v2
-        x2 = vertex3.pos.x - vertex1.pos.x
-        y2 = vertex3.pos.y - vertex1.pos.y
-        z2 = vertex3.pos.z - vertex1.pos.z
+            # Second equation: [x2, y2, z2] = Tangent * u2 + BiTangent * v2
+            x2 = vertex3.pos.x - vertex1.pos.x
+            y2 = vertex3.pos.y - vertex1.pos.y
+            z2 = vertex3.pos.z - vertex1.pos.z
 
-        u2 = vertex3.uv.x - vertex1.uv.x
-        v2 = vertex3.uv.y - vertex1.uv.y
+            u2 = vertex3.uv.x - vertex1.uv.x
+            v2 = vertex3.uv.y - vertex1.uv.y
 
-        # Determinant of the matrix [u1 v1; u2 v2]
-        d = u1 * v2 - u2 * v1
-        
-        # If the determinant is zero then the points (0,0), (u1,v1), (u2,v2) are in line, this means
-        # the area on the UV map of this triangle is null. This is an error, we must skip this triangle.
-        if d == 0:
-            invalidUvIndices.add(vertex1.blenderIndex)
-            invalidUvIndices.add(vertex2.blenderIndex)
-            invalidUvIndices.add(vertex3.blenderIndex)
-            invalidUV = True
-            continue
+            # Determinant of the matrix [u1 v1; u2 v2]
+            d = u1 * v2 - u2 * v1
+            
+            # If the determinant is zero then the points (0,0), (u1,v1), (u2,v2) are in line, this means
+            # the area on the UV map of this triangle is null. This is an error, we must skip this triangle.
+            if d == 0:
+                invalidUvIndices.add(vertex1.blenderIndex)
+                invalidUvIndices.add(vertex2.blenderIndex)
+                invalidUvIndices.add(vertex3.blenderIndex)
+                invalidUV = True
+                continue
 
-        t = Vector( ((v2 * x1 - v1 * x2) / d, (v2 * y1 - v1 * y2) / d, (v2 * z1 - v1 * z2) / d) )
-        b = Vector( ((u1 * x2 - u2 * x1) / d, (u1 * y2 - u2 * y1) / d, (u1 * z2 - u2 * z1) / d) )
-        
-        vertex1.tangent += t;
-        vertex2.tangent += t;
-        vertex3.tangent += t;
-        
-        vertex1.bitangent += b;
-        vertex2.bitangent += b;
-        vertex3.bitangent += b;
+            t = Vector( ((v2 * x1 - v1 * x2) / d, (v2 * y1 - v1 * y2) / d, (v2 * z1 - v1 * z2) / d) )
+            b = Vector( ((u1 * x2 - u2 * x1) / d, (u1 * y2 - u2 * y1) / d, (u1 * z2 - u2 * z1) / d) )
+            
+            vertex1.tangent += t;
+            vertex2.tangent += t;
+            vertex3.tangent += t;
+            
+            vertex1.bitangent += b;
+            vertex2.bitangent += b;
+            vertex3.bitangent += b;
 
     if invalidUV:
         log.error("Invalid UV, the area in the UV map is too small.")
 
-    for vertexIndex in tLodLevel.indexSet:
-        vertex = tVertexList[vertexIndex]
+    # Gram-Schmidt orthogonalize normal, tangent and bitangent
+    for tLodLevel in tLodLevels:
+        for vertexIndex in tLodLevel.indexSet:
+            vertex = tVertexList[vertexIndex]
+            # Skip already calculated vertices
+            if len(vertex.tangent) == 4:
+                continue
+                
+            # Unit vector perpendicular to normal and in the same plane of normal and tangent
+            tOrtho = ( vertex.tangent - vertex.normal * vertex.normal.dot(vertex.tangent) ).normalized()
+            # Unit vector perpendicular to the plane of normal and tangent
+            bOrtho = vertex.normal.cross(vertex.tangent).normalized()
 
-        # Gram-Schmidt orthogonalize
-        
-        # Unit vector perpendicular to normal and in the same plane of normal and tangent
-        tOrtho = ( vertex.tangent - vertex.normal * vertex.normal.dot(vertex.tangent) ).normalized()
-        # Unit vector perpendicular to the plane of normal and tangent
-        bOrtho = vertex.normal.cross(vertex.tangent).normalized()
-
-        # Calculate handedness: if bOrtho and bitangent have the different directions, save the verse
-        # in tangent.w, so we can reconstruct bitangent by: tangent.w * normal.cross(tangent)
-        w = 1.0 if bOrtho.dot(vertex.bitangent) >= 0.0 else -1.0
-        
-        vertex.bitangent = bOrtho
-        vertex.tangent = Vector((tOrtho.x, tOrtho.y, tOrtho.z, w))
+            # Calculate handedness: if bOrtho and bitangent have the different directions, save the verse
+            # in tangent.w, so we can reconstruct bitangent by: tangent.w * normal.cross(tangent)
+            w = 1.0 if bOrtho.dot(vertex.bitangent) >= 0.0 else -1.0
+            
+            vertex.bitangent = bOrtho
+            vertex.tangent = Vector((tOrtho.x, tOrtho.y, tOrtho.z, w))
 
 
         
@@ -1506,18 +1508,24 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
     if missingGroups:
         log.warning("These group indices are missing: {:s}".format( ", ".join(missingGroups) ))
 
-    # For each geometries with new vertices
-    for geometryIndex in updatedGeometryIndices:
-        geometry = geometriesList[geometryIndex]
-        # Only the last LOD was modified (even if it wasn't a new LOD)
-        lodLevel = geometry.lodLevels[-1]
-        # Generate tangents for this LOD level
-        if tOptions.doGeometryTan:
+    # Generate tangents for the last LOD of every geometry with new vertices
+    if tOptions.doGeometryTan:
+        lodLevels = []
+        for geometryIndex in updatedGeometryIndices:
+            geometry = geometriesList[geometryIndex]
+            # Only the last LOD was modified (even if it wasn't a new LOD)
+            lodLevel = geometry.lodLevels[-1]
             log.info("Generating tangents on {:d} indices for {:s} Geometry{:d}"
                     .format(len(lodLevel.indexSet), meshObj.name, geometryIndex) )
-            GenerateTangents(lodLevel, verticesList, invalidUvIndices)
-        # Optimize vertex index buffer for this LOD level
-        if tOptions.doOptimizeIndices:
+            lodLevels.append(lodLevel)
+        GenerateTangents(lodLevels, verticesList, invalidUvIndices)
+            
+    # Optimize vertex index buffer for the last LOD of every geometry with new vertices
+    if tOptions.doOptimizeIndices:
+        for geometryIndex in updatedGeometryIndices:
+            geometry = geometriesList[geometryIndex]
+            # Only the last LOD was modified (even if it wasn't a new LOD)
+            lodLevel = geometry.lodLevels[-1]
             log.info("Optimizing {:d} indices for {:s} Geometry{:d}"
                     .format(len(lodLevel.indexSet), meshObj.name, geometryIndex) )
             OptimizeIndices(lodLevel)
@@ -1655,7 +1663,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                     
         if tOptions.doMorphTan:
             log.info("Generating morph tangents {:s}".format(block.name) )
-            GenerateTangents(tMorph, tMorph.vertexMap, None)
+            GenerateTangents(list(tMorph), tMorph.vertexMap, None)
 
         # If valid add the morph to the model list
         if tMorph.vertexMap:
