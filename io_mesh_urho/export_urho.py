@@ -11,40 +11,11 @@ from xml.etree import ElementTree as ET
 from xml.dom import minidom
 import operator
 import struct
+import array
 import os
 
 import logging
 log = logging.getLogger("ExportLogger")
-
-'''
-Sometimes editor crashes, maybe we have to lock files:
-----
-from lockfile import FileLock
-lock = FileLock("/some/file/or/other")
-with lock:
-    print lock.path, 'is locked.'
-----
-lock = FileLock("/some/file/or/other")
-while not lock.i_am_locking():
-    try:
-        lock.acquire(timeout=60)    # wait up to 60 seconds
-    except LockTimeout:
-        lock.break_lock()
-        lock.acquire()
-print "I locked", lock.path
-lock.release()
-----
-class A(object):
-    def __key(self):
-        return (self.attr_a, self.attr_b, self.attr_c)
-
-    def __eq__(x, y):
-        return x.__key() == y.__key()
-
-    def __hash__(self):
-        return hash(self.__key())
-
-'''
 
 #--------------------
 # Urho enums
@@ -458,48 +429,56 @@ class UrhoExportOptions:
 
 class BinaryFileWriter:
 
+    # We try to write the file with a single API call to avoid
+    # the Editor crashing while reading a not completed file.
+    # We set the buffer to 1Mb (if unspecified is 64Kb, and it is
+    # 8Kb with multiple file.write calls)
+
     # Constructor.
     def __init__(self):
-        # File stream.
-        self.file = None
+        self.filename = None
+        self.buffer = None
     
     # Open file stream.
     def open(self, filename):
-        self.file = open(filename, "wb")
+        self.filename = filename
+        self.buffer = array.array('B')
         return True
 
     def close(self):
-        self.file.close()
+        file = open(self.filename, "wb", 1024 * 1024)
+        self.buffer.tofile(file)
+        file.close()
 
     # Writes an ASCII string without terminator
     def writeAsciiStr(self, v):
-        self.file.write(bytes(v, "ascii"))
+        self.buffer.extend(bytes(v, "ascii"))
 
     # Writes a 32 bits unsigned int
     def writeUInt(self, v):
-        self.file.write(struct.pack("<I", v))
+        self.buffer.extend(struct.pack("<I", v))
 
     # Writes a 16 bits unsigned int
     def writeUShort(self, v):
-        self.file.write(struct.pack("<H", v))
+        self.buffer.extend(struct.pack("<H", v))
 
     # Writes one 8 bits unsigned byte
     def writeUByte(self, v):
-        self.file.write(struct.pack("<B", v))
+        self.buffer.extend(struct.pack("<B", v))
 
     # Writes four 32 bits floats .w .x .y .z
     def writeQuaternion(self, v):
-        self.file.write(struct.pack("<4f", v.w, v.x, v.y, v.z))
+        self.buffer.extend(struct.pack("<4f", v.w, v.x, v.y, v.z))
 
     # Writes three 32 bits floats .x .y .z
     def writeVector3(self, v):
-        self.file.write(struct.pack("<3f", v.x, v.y, v.z))
+        self.buffer.extend(struct.pack("<3f", v.x, v.y, v.z))
 
     # Writes a 32 bits float
     def writeFloat(self, v):
-        self.file.write(struct.pack("<f", v))
+        self.buffer.extend(struct.pack("<f", v))
 
-        
+
 def UrhoWriteModel(model, filename):
 
     if not model.vertexBuffers or not model.indexBuffers or not model.geometries:
