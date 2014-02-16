@@ -958,19 +958,23 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     # Here we collect every animation objects we want to export
     animationObjects = []
 
+    # Here we collect the parents of animation objects
+    animationParents = {}
+
     # Scan all the Tracks not muted of the armature
     for track in armatureObj.animation_data.nla_tracks:
         track.is_solo = False
         if track.mute:
             continue
         # Add Track
-        if tOptions.doTracks or (self.doSelectedTracks and track.select):
+        if tOptions.doTracks or (tOptions.doSelectedTracks and track.select):
             animationObjects.append(track)
         # Scan all the Strips of the Track
         for strip in track.strips:
             # Add Strip (every Strip is unique, no need to check for duplicates)
-            if tOptions.doStrips or (self.doSelectedStrips and strip.select):
+            if tOptions.doStrips or (tOptions.doSelectedStrips and strip.select):
                 animationObjects.append(strip)
+                animationParents[strip] = track
             # Add an used Action 
             action = strip.action
             if tOptions.doUsedActions and action and not action in animationObjects:
@@ -1001,8 +1005,11 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             endframe = int(endframe+1)
         elif type(object) is bpy.types.NlaStrip:
             # Strips also have their frame range
-            startframe = int(object.frame_start)
-            endframe = int(object.frame_end+1)
+            #startframe = int(object.frame_start)
+            #endframe = int(object.frame_end+1)
+            # Patch: Use the Strip as an Action
+            startframe = int(object.action_frame_start)
+            endframe = int(object.action_frame_end+1)
         else:
             # For Tracks and Timeline we use the scene playback range
             startframe = int(scene.frame_start)
@@ -1027,8 +1034,8 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             # Get the Actions
             actionSet.add(object)
             
-        # If it is a Track (not muted) or a Strip in a Track, set it as solo
-        if type(object) is bpy.types.NlaTrack or type(object) is bpy.types.NlaStrip:
+        # If it is a Track (not muted), set it as solo
+        if type(object) is bpy.types.NlaTrack:
             log.info("Decomposing track: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe))
             # Set the NLA Track as solo
             object.is_solo = True
@@ -1037,7 +1044,19 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             for strip in object.strips:
                 if strip.action:
                     actionSet.add(strip.action)
-            
+
+        # If it is a Strip in a Track, set it as solo
+        if type(object) is bpy.types.NlaStrip:
+            log.info("Decomposing strip: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe))
+            # Set the parent NLA Track as solo (strange behavior)
+            #animationParents[object].is_solo = True
+            #armatureObj.animation_data.use_nla = True
+            # Patch: Use the Strip as an Action
+            armatureObj.animation_data.use_nla = False
+            armatureObj.animation_data.action = object.action
+            # Get the Action
+            actionSet.add(object.action)
+
         # If it is the Timeline, merge all the Tracks (not muted)
         if type(object) is bpy.types.Object:        
             log.info("Decomposing animation: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe))
