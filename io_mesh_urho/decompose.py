@@ -933,6 +933,14 @@ def DecomposeArmature(scene, armatureObj, tData, tOptions):
 
 def DecomposeActions(scene, armatureObj, tData, tOptions):
 
+    # Class for storing a NlaStrip, its previous strip and its parent track
+    class NlaStripLink:
+        def __init__(self, strip, previous, track):
+            self.name = strip.name
+            self.strip = strip
+            self.previous = previous
+            self.track = track
+            
     bonesMap = tData.bonesMap
     animationsList = tData.animationsList
     
@@ -940,6 +948,21 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
         log.warning('Armature {:s} has no animation data'.format(armatureObj.name))
         return
 
+    # Check that armature and children objects have scale, rotation applied and the same origin
+    if armatureObj.scale != Vector((1.0, 1.0, 1.0)):
+        log.warning('You should apply scale to armature {:s}'.format(armatureObj.name))
+    if armatureObj.rotation_quaternion != Quaternion((1.0, 0.0, 0.0, 0.0)):
+        log.warning('You should apply rotation to armature {:s}'.format(armatureObj.name))
+    for obj in armatureObj.children:
+        if obj.type == 'MESH':
+            if obj.scale != Vector((1.0, 1.0, 1.0)):
+                log.warning('You should apply scale to object {:s}'.format(obj.name))
+            if obj.rotation_quaternion != Quaternion((1.0, 0.0, 0.0, 0.0)):
+                log.warning('You should apply rotation to object {:s}'.format(obj.name))
+            if obj.location != armatureObj.location:
+                log.warning('Object {:s} should have the same origin as its armature {:s}'.format(obj.name, 
+                            armatureObj.name))
+            
     # armatureObj.animation_data.action ???
             
     originMatrix = Matrix.Identity(4)
@@ -958,9 +981,6 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     # Here we collect every animation objects we want to export
     animationObjects = []
 
-    # Here we collect the parents of animation objects
-    animationParents = {}
-
     # Scan all the Tracks not muted of the armature
     for track in armatureObj.animation_data.nla_tracks:
         track.is_solo = False
@@ -970,15 +990,17 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
         if tOptions.doTracks or (tOptions.doSelectedTracks and track.select):
             animationObjects.append(track)
         # Scan all the Strips of the Track
+        previous = None
         for strip in track.strips:
             # Add Strip (every Strip is unique, no need to check for duplicates)
             if tOptions.doStrips or (tOptions.doSelectedStrips and strip.select):
-                animationObjects.append(strip)
-                animationParents[strip] = track
+                stripLink = NlaStripLink(strip, previous, track)
+                animationObjects.append(stripLink)
             # Add an used Action 
             action = strip.action
             if tOptions.doUsedActions and action and not action in animationObjects:
                 animationObjects.append(action)
+            previous = strip
 
     # armatureObj.animation_data.action
     # armatureObj.animation_data.nla_tracks.active
@@ -998,22 +1020,28 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     for object in animationObjects:
         tAnimation = TAnimation(object.name)
     
-        if type(object) is bpy.types.Action:
+        # Frame when the animation starts
+        frameOffset = 0
+        
+        # Objects to save old values
+        oldTrackValue = None
+        oldStripValue = None
+    
+        if isinstance(object, bpy.types.Action):
             # Actions have their frame range
             (startframe, endframe) = object.frame_range
             startframe = int(startframe)
-            endframe = int(endframe+1)
-        elif type(object) is bpy.types.NlaStrip:
+            endframe = int(endframe + 1)
+        elif isinstance(object, NlaStripLink): # bpy.types.NlaStrip
             # Strips also have their frame range
-            #startframe = int(object.frame_start)
-            #endframe = int(object.frame_end+1)
-            # Patch: Use the Strip as an Action
-            startframe = int(object.action_frame_start)
-            endframe = int(object.action_frame_end+1)
+            startframe = int(object.strip.frame_start)
+            endframe = int(object.strip.frame_end + 1)
+            # Strip can start anywhere
+            frameOffset = startframe
         else:
             # For Tracks and Timeline we use the scene playback range
             startframe = int(scene.frame_start)
-            endframe = int(scene.frame_end+1)
+            endframe = int(scene.frame_end + 1)
 
         # Here we collect every action used by this animation, so we can filter the only used bones
         actionSet = set()
@@ -1026,8 +1054,8 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             return
         
         # If it is an Action, set the current Action; also disable NLA to disable influences from others NLA tracks
-        if type(object) is bpy.types.Action:
-            log.info("Decomposing action: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe))
+        if isinstance(object, bpy.types.Action):
+            log.info("Decomposing action: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
             # Set Action on the armature
             armatureObj.animation_data.use_nla = False
             armatureObj.animation_data.action = object
@@ -1035,9 +1063,10 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             actionSet.add(object)
             
         # If it is a Track (not muted), set it as solo
-        if type(object) is bpy.types.NlaTrack:
-            log.info("Decomposing track: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe))
+        if isinstance(object, bpy.types.NlaTrack):
+            log.info("Decomposing track: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
             # Set the NLA Track as solo
+            oldTrackValue = object.is_solo
             object.is_solo = True
             armatureObj.animation_data.use_nla = True
             # Get the Actions
@@ -1046,21 +1075,27 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     actionSet.add(strip.action)
 
         # If it is a Strip in a Track, set it as solo
-        if type(object) is bpy.types.NlaStrip:
-            log.info("Decomposing strip: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe))
+        if isinstance(object, NlaStripLink):
+            log.info("Decomposing strip: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
             # Set the parent NLA Track as solo (strange behavior)
-            #animationParents[object].is_solo = True
-            #armatureObj.animation_data.use_nla = True
-            # Patch: Use the Strip as an Action
-            armatureObj.animation_data.use_nla = False
-            armatureObj.animation_data.action = object.action
+            armatureObj.animation_data.use_nla = True
+            oldTrackValue = object.track.is_solo
+            object.track.is_solo = True
+            # We mute the previous strip because it mess with the first frame
+            if object.previous:
+                oldStripValue = object.previous.mute
+                object.previous.mute = True
             # Get the Action
-            actionSet.add(object.action)
+            actionSet.add(object.strip.action)
 
         # If it is the Timeline, merge all the Tracks (not muted)
-        if type(object) is bpy.types.Object:        
-            log.info("Decomposing animation: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe))
+        if isinstance(object, bpy.types.Object):
+            log.info("Decomposing animation: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
             armatureObj.animation_data.use_nla = True
+            # If there are no Tracks use the saved action (NLA is empty so we can keep it on)
+            if not object.animation_data.nla_tracks and savedAction:
+                armatureObj.animation_data.action = savedAction
+                actionSet.add(savedAction)
             # Get the Actions
             for track in object.animation_data.nla_tracks:
                 for strip in track.strips:
@@ -1157,7 +1192,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 if not tOptions.doAnimationSca:
                     sl = None
         
-                tFrame = TFrame(time / scene.render.fps, tl, ql, sl)
+                tFrame = TFrame((time - frameOffset) / scene.render.fps, tl, ql, sl)
                 
                 if not tTrack.frames or tTrack.frames[-1].hasMoved(tFrame):
                     tTrack.frames.append(tFrame)
@@ -1168,8 +1203,13 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
         if tAnimation.tracks:
             animationsList.append(tAnimation)
         
-        if type(object) is bpy.types.NlaTrack:
-            object.is_solo = False
+        if isinstance(object, bpy.types.NlaTrack):
+            object.is_solo = oldTrackValue
+            
+        if isinstance(object, NlaStripLink):
+            object.track.is_solo = oldTrackValue
+            if object.previous:
+                object.previous.mute = oldStripValue
 
     # Restore initial action and frame
     armatureObj.animation_data.action = savedAction
