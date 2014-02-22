@@ -828,13 +828,14 @@ def DecomposeArmature(scene, armatureObj, tData, tOptions):
     
     bonesMap = tData.bonesMap
 
-    ## armature.pose_position = 'REST'
-    ## bpy.data.armatures[0].pose_position = 'REST'
-
     # 'armature.pose.bones' contains bones data for the current frame
-    # 'armature.data.bones' contains bones data for the rest position
+    # 'armature.data.bones' contains bones data for the rest position (not true?)
     armature = armatureObj.data
-    
+
+    # Force the armature in the rest position (warning: https://developer.blender.org/T24674)
+    savedPosePosition = armature.pose_position
+    armature.pose_position = 'REST'
+
     if not armature.bones:
         log.warning('Armature {:s} has no bones'.format(armatureObj.name))
         return
@@ -925,7 +926,9 @@ def DecomposeArmature(scene, armatureObj, tData, tOptions):
             bonesMap[bone.name] = tBone
         else:
             log.critical("Bone {:s} already present in the map.".format(bone.name))
-        
+
+    # Restore values
+    armature.pose_position = savedPosePosition
 
 #--------------------
 # Decompose animations
@@ -1112,7 +1115,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             boneSet = set()
             for action in actionSet:
                 for group in action.groups:
-                    bonesSet.update(group.name)
+                    boneSet.add(group.name)
             # Add the bones name respecting the order of bonesMap
             for bone in bonesMap.keys():
                 if bone in boneSet:
@@ -1191,7 +1194,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     ql = None
                 if not tOptions.doAnimationSca:
                     sl = None
-        
+                    
                 tFrame = TFrame((time - frameOffset) / scene.render.fps, tl, ql, sl)
                 
                 if not tTrack.frames or tTrack.frames[-1].hasMoved(tFrame):
@@ -1217,9 +1220,9 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     scene.frame_set(savedFrame)
 
 
-#--------------------
+#---------------------------------
 # Decompose geometries and morphs
-#--------------------
+#---------------------------------
 
 def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
 
