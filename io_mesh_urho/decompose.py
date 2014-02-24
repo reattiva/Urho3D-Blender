@@ -74,14 +74,33 @@ class TVertex:
         # Bones weights: list of tuple(boneIndex, weight)
         self.weights = None
 
+    # returns True is this vertex is a changed morph of vertex 'other'
+    def isMorphed(self, other):
+        # TODO: compare floats with a epsilon margin?
+        if other.pos is None:
+            return True
+        if self.pos and self.pos != other.pos:
+            return True
+        if self.normal and self.normal != other.normal:
+            return True
+        # We cannot use tangent, it is not calculated yet
+        if self.uv and self.uv != other.uv:
+            return True
+        return False
+
     # used by the function index() of lists
     def __eq__(self, other):
         # TODO: can we do without color and weights?
+        # TODO: compare floats with a epsilon margin?
         #return (self.__dict__ == other.__dict__)
         return (self.pos == other.pos and 
                 self.normal == other.normal and 
                 self.uv == other.uv)
-    
+
+    def isEqual(self, other):
+        # TODO: compare floats with a epsilon margin?
+        return self == other
+                
     def __hash__(self):
         hashValue = 0
         if self.pos:
@@ -290,7 +309,9 @@ class TOptions:
         self.applyModifiers = False
         self.applySettings = 'PREVIEW'
         self.doBones = True
-        self.doOnlyKeyedBones = False   #TODO: check
+        self.doOnlyKeyedBones = False
+        self.doOnlyDeformBones = False
+        self.doOnlyVisibleBones = False
         self.derigifyArmature = False
         self.doAnimations = True
         self.doAllActions = True
@@ -863,12 +884,15 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
     if tOptions.derigifyArmature:
         # from a Rigify armature
         bonesList = DerigifyArmature(armature)
-        print("Derifigy")
     else:
         # from a standard armature
         bonesList = []
         # Recursively add children
         def Traverse(bone, parent):
+            if tOptions.doOnlyVisibleBones and not any(al and bl for al,bl in zip(armature.layers, bone.layers)):
+                return
+            if tOptions.doOnlyDeformBones and not bone.use_deform:
+                return
             bonesList.append( (bone, parent) )
             for child in bone.children:
                 Traverse(child, bone)
@@ -1540,7 +1564,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
             ## tVertexIndex = next((j for j in verticesMapList if verticesList[j] == tVertex), None)
             tVertexIndex = None
             for j in verticesMapList:
-                if verticesList[j] == tVertex:
+                if verticesList[j].isEqual(tVertex):
                     tVertexIndex = j
                     break
 
@@ -1673,7 +1697,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                     tVertexIndex = faceVertexMap[(face.index, vertexIndex)]
                 except KeyError:
                     log.error("Cannot find vertex {:d} of face {:d} of shape {:s}."
-                          .format(vertexIndex, face.index, block.name) )
+                              .format(vertexIndex, face.index, block.name) )
                     continue
 
                 # Get the original not morphed TVertex
@@ -1705,7 +1729,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                 tempList.append((tVertexIndex, tMorphVertex))
                 
                 # Check if the morph has effect
-                if tMorphVertex != tVertex or tVertex.pos is None:
+                if tMorphVertex.isMorphed(tVertex):
                     morphed = True
             
             # If at least one vertex in the face was morphed
@@ -1737,7 +1761,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                     
         if tOptions.doMorphTan:
             log.info("Generating morph tangents {:s}".format(block.name) )
-            GenerateTangents(list(tMorph), tMorph.vertexMap, None)
+            GenerateTangents((tMorph,), tMorph.vertexMap, None)
 
         # If valid add the morph to the model list
         if tMorph.vertexMap:
@@ -1819,11 +1843,12 @@ def Scan(context, tDataList, tOptions):
             # Create a new container where to save decomposed data
             if not tData or createNew:
                 tData = TData()
-                # If we are merging objects, if it exists use the current object name
-                if tOptions.mergeObjects and context.selected_objects and context.selected_objects[0].name:
-                    tData.objectName = context.selected_objects[0].name
-                else:
-                    tData.objectName = name
+                tData.objectName = name
+                # If we are merging objects, use the current selected object name (only if it is a mesh)
+                if tOptions.mergeObjects and context.selected_objects:
+                    selectedObject = context.selected_objects[0]
+                    if selectedObject.type == 'MESH' and selectedObject.name:
+                        tData.objectName = selectedObject.name
                 tDataList.append(tData)
                 tOptions.newLod = True
                 tOptions.lodDistance = 0.0

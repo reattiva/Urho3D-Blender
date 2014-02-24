@@ -34,6 +34,8 @@ ELEMENT_BINDICES    = 0x0200
 
 ELEMENT_BLEND       = 0x0300
 
+MORPH_ELEMENTS      = ELEMENT_POSITION | ELEMENT_NORMAL | ELEMENT_TANGENT
+
 BONE_BOUNDING_SPHERE = 0x0001
 BONE_BOUNDING_BOX    = 0x0002
 
@@ -518,23 +520,23 @@ def UrhoWriteModel(model, filename):
             if mask & ELEMENT_NORMAL:
                 fw.writeVector3(vertex.normal)
             if mask & ELEMENT_COLOR:
-                for c in vertex.color:
-                    fw.writeUByte(c)
+                for i in range(4):
+                    fw.writeUByte(vertex.color[i])
             if mask & ELEMENT_UV1:
-                for uv in vertex.uv:
-                    fw.writeFloat(uv)
+                for i in range(2):
+                    fw.writeFloat(vertex.uv[i])
             if mask & ELEMENT_UV2:
-                for uv2 in vertex.uv2:
-                    fw.writeFloat(uv2)
+                for i in range(2):
+                    fw.writeFloat(vertex.uv2[i])
             if mask & ELEMENT_TANGENT:
                 fw.writeVector3(vertex.tangent)
                 fw.writeFloat(vertex.tangent.w)
             if mask & ELEMENT_BWEIGHTS:
-                for iw in vertex.weights:
-                    fw.writeFloat(iw[1])
+                for i in range(4):
+                    fw.writeFloat(vertex.weights[i][1])
             if mask & ELEMENT_BINDICES:
-                for iw in vertex.weights:
-                    fw.writeUByte(iw[0])
+                for i in range(4):
+                    fw.writeFloat(vertex.weights[i][0])
 
     # Number of index buffers
     fw.writeUInt(len(model.indexBuffers))
@@ -591,7 +593,7 @@ def UrhoWriteModel(model, filename):
             # Vertex buffer index, starting from 0
             fw.writeUInt(morphBufferIndex)
             # Vertex element mask for morph data
-            mask = morphBuffer.elementMask
+            mask = (morphBuffer.elementMask & MORPH_ELEMENTS)
             fw.writeUInt(mask)
             # Vertex count
             fw.writeUInt(len(morphBuffer.vertices))
@@ -608,7 +610,6 @@ def UrhoWriteModel(model, filename):
                 # Moprh vertex Tangent
                 if mask & ELEMENT_TANGENT:
                     fw.writeVector3(vertex.tangent)
-                    fw.writeFloat(vertex.tangent.w)
                     
     # Number of bones (may be 0)
     fw.writeUInt(len(model.bones))
@@ -1110,7 +1111,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                 except MaskError as e:
                     if not tVertex.blenderIndex is None:
                         errorsMorphIndices.add(tMorphVertex.blenderIndex)
-                    log.warning("Incompatible vertex element mask in morph {:s} of object {:s} ({:s})".format(uMorph.name, uModel.name, e))
+                    log.warning("Incompatible vertex element mask in morph {:s} of object {:s} ({:s})"
+                                .format(uMorph.name, uModel.name, e))
 
                 # Get the original vertex
                 uVertexBuffer = uModel.vertexBuffers[uVertexBufferIndex]

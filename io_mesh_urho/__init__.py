@@ -157,21 +157,61 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     # This is called each time a property (created with the parameter 'update')
     # changes its value
     def update_func(self, context):
+        # Avoid infinite recursion
+        if self.updatingProperties:
+            return
+        self.updatingProperties = True
 
+        # Save preferred output path
         addonPrefs = context.user_preferences.addons[__name__].preferences
         if self.outputPath:
             addonPrefs.outputPath = self.outputPath
+        # Skeleton implies weights    
         if self.skeletons:
             self.geometryWei = True
         else:
             self.geometryWei = False
             self.animations = False
+        # Morphs need geometries    
         if not self.geometries:
             self.morphs = False
+        # Tangent needs position, normal and UV
         if not self.geometryPos or not self.geometryNor or not self.geometryUV:
             self.geometryTan = False
+        # Morph tangent needs normal (position and UV are automatic)
         if not self.morphNor:
             self.morphTan = False
+        # Morph normal needs geometry normal
+        if self.morphNor:
+            self.geometryNor = True
+        # Morph tangent needs geometry tangent
+        if self.morphTan:
+            self.geometryPos = True
+            self.geometryNor = True
+            self.geometryUV = True
+            self.geometryTan = True
+        # Derigify and Only deform or Only Visible are imcompatible
+        if self.derigify:
+            self.onlyDeformBones = False
+            self.onlyVisibleBones = False
+        # Select errors and merge are incompatible
+        if self.selectErrors:
+            self.merge = False
+            
+        self.updatingProperties = False
+
+    def update_func2(self, context):
+        if self.updatingProperties:
+            return
+        self.updatingProperties = True
+        # Derigify and Only deform or Only Visible are imcompatible
+        if self.onlyDeformBones or self.onlyVisibleBones:
+            self.derigify = False
+        # Select errors and merge are incompatible
+        if self.merge:
+            self.selectErrors = False
+
+        self.updatingProperties = False
 
     # Set all the export settings back to their default values
     def reset(self, context): 
@@ -198,6 +238,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
         self.skeletons = False
         self.onlyKeyedBones = False
+        self.onlyDeformBones = False
+        self.onlyVisibleBones = False
         self.derigify = False
 
         self.animations = False
@@ -222,6 +264,10 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
         self.materials = False
         self.textures = False
+
+    # --- Accessory ---
+
+    updatingProperties = BoolProperty(default = False)
 
     # --- Output settings ---
     
@@ -271,7 +317,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Resolution setting to use while applying modifiers",
             items=(('PREVIEW', "Preview", "use the Preview resolution setting"),
                    ('RENDER', "Render", "use the Render resolution setting")),
-            default='PREVIEW')
+            default='RENDER')
 
     origin = EnumProperty(
             name = "Mesh origin",
@@ -283,7 +329,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     selectErrors = BoolProperty(
             name = "Select vertices with errors",
             description = "If a vertex has errors (e.g. invalid UV, missing UV or color or weights) select it",
-            default = False)
+            default = True,
+            update = update_func)
 
     forceElements = BoolProperty(
             name = "Force missing elements",
@@ -293,7 +340,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     merge = BoolProperty(
             name = "Merge objects (uses current object name)",
             description = "Merge all the objects in a single file (one geometry for object)",
-            default = False)
+            default = False,
+            update = update_func2)
 
     geometrySplit = BoolProperty(
             name = "One vertex buffer per object",
@@ -313,7 +361,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     optimizeIndices = BoolProperty(
             name = "Optimize indices (slow)",
             description = "Linear-Speed vertex cache optimisation",
-            default = False)
+            default = True)
 
     # --- Components settings ---
 
@@ -325,13 +373,26 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     onlyKeyedBones = BoolProperty(
             name = "Only keyed bones",
-            description = "Export only bones with keys",
+            description = "In animinations export only bones with keys",
             default = False)
+
+    onlyDeformBones = BoolProperty(
+            name = "Only deform bones",
+            description = "Don't export bones without Deform and its children",
+            default = False,
+            update = update_func2)
+            
+    onlyVisibleBones = BoolProperty(
+            name = "Only visible bones",
+            description = "Don't export bones not visible and its children",
+            default = False,
+            update = update_func2)
 
     derigify = BoolProperty(
             name = "Derigify",
             description = "Remove extra bones from Rigify armature",
-            default = True)
+            default = False,
+            update = update_func)
 
     animations = BoolProperty(
             name = "Animations",
@@ -397,19 +458,20 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     geometryUV = BoolProperty(
             name = "UV",
             description = "Within geometry export vertex UV",
-            default = True,
+            default = False,
             update = update_func)
 
     geometryUV2 = BoolProperty(
             name = "UV2",
             description = "Within geometry export vertex UV2 (append _UV2 to the texture name)",
-            default = True,
+            default = False,
             update = update_func)
 
     geometryTan = BoolProperty(
             name = "Tangent",
-            description = "Within geometry export vertex tangent",
-            default = False)
+            description = "Within geometry export vertex tangent (Position, Normal, UV needed)",
+            default = False,
+            update = update_func)
 
     geometryWei = BoolProperty(
             name = "Weights",
@@ -423,14 +485,15 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     morphNor = BoolProperty(
             name = "Normal",
-            description = "Within morph export vertex normal",
+            description = "Within morph export vertex normal (Geometry Normal needed)",
             default = True,
             update = update_func)
 
     morphTan = BoolProperty(
             name = "Tangent",
-            description = "Within morph export vertex tangent",
-            default = False)
+            description = "Within morph export vertex tangent (Morph Normal, Geometry Tangent needed)",
+            default = False,
+            update = update_func)
 
     materials = BoolProperty(
             name = "Export materials",
@@ -581,9 +644,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         if settings.skeletons:
             row = box.row()
             row.separator()
-            row.prop(settings, "derigify")
-            #row.prop(settings, "bonesGlobalOrigin")
-            #row.prop(settings, "actionsGlobalOrigin")
+            col = row.column()
+            col.prop(settings, "derigify")
+            #col.prop(settings, "bonesGlobalOrigin")
+            #col.prop(settings, "actionsGlobalOrigin")
+            col.prop(settings, "onlyDeformBones")
+            col.prop(settings, "onlyVisibleBones")
 
         row = box.row()
         row.enabled = settings.skeletons
@@ -642,9 +708,11 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         if settings.geometries and settings.morphs:
             row = box.row()
             row.separator()
-            row.prop(settings, "morphNor")
             col = row.column()
-            col.enabled = settings.morphNor
+            col.enabled = settings.geometryNor
+            col.prop(settings, "morphNor")
+            col = row.column()
+            col.enabled = settings.morphNor and settings.geometryTan
             col.prop(settings, "morphTan")
 
         row = box.row()
@@ -803,6 +871,8 @@ def ExecuteUrhoExport(context):
     tOptions.applySettings = settings.modifiersRes
     tOptions.doBones = settings.skeletons
     tOptions.doOnlyKeyedBones = settings.onlyKeyedBones
+    tOptions.doOnlyDeformBones = settings.onlyDeformBones
+    tOptions.doOnlyVisibleBones = settings.onlyVisibleBones
     tOptions.derigifyArmature = settings.derigify
     tOptions.doAnimations = settings.animations
     tOptions.doAllActions = (settings.animationSource == 'ALL_ACTIONS')
@@ -864,6 +934,7 @@ def ExecuteUrhoExport(context):
         if DEBUG: ttt = time.time() #!TIME
 
         #PrintUrhoData(uExportData, "FIRST20,POS,COLOR")
+        #PrintUrhoData(uExportData, 0x22B)
 
         modelsPath = composePath(settings.outputPath, "Models", settings.useStandardDirs)
             
