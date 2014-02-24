@@ -178,18 +178,15 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Tangent needs position, normal and UV
         if not self.geometryPos or not self.geometryNor or not self.geometryUV:
             self.geometryTan = False
-        # Morph tangent needs normal (position and UV are automatic)
+        # Morph normal needs geometry normal
+        if not self.geometryNor:
+            self.morphNor = False
+        # Morph tangent needs geometry tangent
+        if not self.geometryTan:
+            self.morphTan = False
+        # Morph tangent needs normal
         if not self.morphNor:
             self.morphTan = False
-        # Morph normal needs geometry normal
-        if self.morphNor:
-            self.geometryNor = True
-        # Morph tangent needs geometry tangent
-        if self.morphTan:
-            self.geometryPos = True
-            self.geometryNor = True
-            self.geometryUV = True
-            self.geometryTan = True
         # Derigify and Only deform or Only Visible are imcompatible
         if self.derigify:
             self.onlyDeformBones = False
