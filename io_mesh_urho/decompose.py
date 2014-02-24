@@ -824,13 +824,26 @@ def DerigifyArmature(armature):
 # else:
 #   poseMatrix = upAxis.matrix.inverted() * origin.matrix * poseMatrix  
 
-def DecomposeArmature(scene, armatureObj, tData, tOptions):
+def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
     
     bonesMap = tData.bonesMap
 
     # 'armature.pose.bones' contains bones data for the current frame
     # 'armature.data.bones' contains bones data for the rest position (not true?)
     armature = armatureObj.data
+
+    # Check that armature and children objects have scale, rotation applied and the same origin
+    if armatureObj.scale != Vector((1.0, 1.0, 1.0)):
+        log.warning('You should apply scale to armature {:s}'.format(armatureObj.name))
+    if armatureObj.rotation_quaternion != Quaternion((1.0, 0.0, 0.0, 0.0)):
+        log.warning('You should apply rotation to armature {:s}'.format(armatureObj.name))
+    if meshObj.scale != Vector((1.0, 1.0, 1.0)):
+        log.warning('You should apply scale to object {:s}'.format(meshObj.name))
+    if meshObj.rotation_quaternion != Quaternion((1.0, 0.0, 0.0, 0.0)):
+        log.warning('You should apply rotation to object {:s}'.format(meshObj.name))
+    if not tOptions.globalOrigin and meshObj.location != armatureObj.location:
+        log.warning('Object {:s} should have the same origin as its armature {:s}'
+                    .format(meshObj.name, armatureObj.name))
 
     # Force the armature in the rest position (warning: https://developer.blender.org/T24674)
     savedPosePosition = armature.pose_position
@@ -950,24 +963,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     if not armatureObj.animation_data:
         log.warning('Armature {:s} has no animation data'.format(armatureObj.name))
         return
-
-    # Check that armature and children objects have scale, rotation applied and the same origin
-    if armatureObj.scale != Vector((1.0, 1.0, 1.0)):
-        log.warning('You should apply scale to armature {:s}'.format(armatureObj.name))
-    if armatureObj.rotation_quaternion != Quaternion((1.0, 0.0, 0.0, 0.0)):
-        log.warning('You should apply rotation to armature {:s}'.format(armatureObj.name))
-    for obj in armatureObj.children:
-        if obj.type == 'MESH':
-            if obj.scale != Vector((1.0, 1.0, 1.0)):
-                log.warning('You should apply scale to object {:s}'.format(obj.name))
-            if obj.rotation_quaternion != Quaternion((1.0, 0.0, 0.0, 0.0)):
-                log.warning('You should apply rotation to object {:s}'.format(obj.name))
-            if obj.location != armatureObj.location:
-                log.warning('Object {:s} should have the same origin as its armature {:s}'.format(obj.name, 
-                            armatureObj.name))
-            
-    # armatureObj.animation_data.action ???
-            
+                        
     originMatrix = Matrix.Identity(4)
     if tOptions.actionsGlobalOrigin:
         originMatrix = armatureObj.matrix_world
@@ -1004,9 +1000,6 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             if tOptions.doUsedActions and action and not action in animationObjects:
                 animationObjects.append(action)
             previous = strip
-
-    # armatureObj.animation_data.action
-    # armatureObj.animation_data.nla_tracks.active
                 
     # Add all the Actions (even if unused or deleted)
     if tOptions.doAllActions:
@@ -1270,8 +1263,12 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
 
     # Mesh vertex groups
     meshVertexGroups = meshObj.vertex_groups
+    
+    # Errors helpers
     notBonesGroups = set()
     missingGroups = set()
+    overrideBones = set()
+    missingBones = set()
 
     # Python trick: C = A and B, if A is False (None, empty list) then C=A, if A is
     # True (object, populated list) then C=B
@@ -1507,6 +1504,17 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                             notBonesGroups.add(boneName)
                     except IndexError:
                         missingGroups.add(str(g.group))
+                # If the mesh has a bone for parent use it for a 100% weight skinning
+                if meshObj.parent_type == 'BONE' and meshObj.parent_bone:
+                    boneName = meshObj.parent_bone
+                    # We shouldn't have any skinning on the vertex
+                    if weights:
+                        overrideBones.add(boneName)
+                    try:
+                        boneIndex = bonesMap[boneName].index
+                        weights.append( (boneIndex, 1.0) )
+                    except KeyError:
+                        missingBones.add(boneName)
                 # If we found no bone weight (not even one with weight zero) leave the list equal to None
                 if weights:
                     tVertex.weights = weights
@@ -1566,10 +1574,14 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
     tOptions.newLod = False
 
     if notBonesGroups:
-        log.warning("Maybe these groups have no bone: {:s}".format( ", ".join(notBonesGroups) ))
+        log.info("These groups are not used for bone deforms: {:s}".format( ", ".join(notBonesGroups) ))
     if missingGroups:
         log.warning("These group indices are missing: {:s}".format( ", ".join(missingGroups) ))
-
+    if overrideBones:
+        log.warning("These parent bones will override the deforms: {:s}".format( ", ".join(overrideBones) ))
+    if missingBones:
+        log.warning("These parent bones are missing in the armature: {:s}".format( ", ".join(missingBones) ))
+    
     # Generate tangents for the last LOD of every geometry with new vertices
     if tOptions.doGeometryTan:
         lodLevels = []
@@ -1819,8 +1831,9 @@ def Scan(context, tDataList, tOptions):
             # First we need to populate the skeleton, then animations and then geometries
             if tOptions.doBones:
                 armatureObj = None
-                # Check if obj has an armature parent, and if it is not attached to a bone (like hair to head bone)
-                if obj.parent and obj.parent.type == 'ARMATURE' and obj.parent_type != 'BONE':
+                # Check if obj has an armature parent, if it is attached to a bone (like hair to head bone)
+                # we'll skin it to the bone with 100% weight (but it shouldn't have bone vertex groups)
+                if obj.parent and obj.parent.type == 'ARMATURE':
                     armatureObj = obj.parent
                 else:
                     # Check if there is an Armature modifier
@@ -1830,8 +1843,9 @@ def Scan(context, tDataList, tOptions):
                             break
                 # Decompose armature and animations
                 if armatureObj:
-                    DecomposeArmature(scene, armatureObj, tData, tOptions)
-                    if tOptions.doAnimations:
+                    if not tData.bonesMap or not tOptions.mergeObjects:
+                        DecomposeArmature(scene, armatureObj, obj, tData, tOptions)
+                    if tOptions.doAnimations and (not tData.animationsList or not tOptions.mergeObjects):
                         DecomposeActions(scene, armatureObj, tData, tOptions)
                 else:
                     log.warning("Object {:s} has no armature".format(name) )
