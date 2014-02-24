@@ -41,7 +41,7 @@ if "decompose" in locals():
     if DEBUG and "testing" in locals(): imp.reload(testing)
 
 from .decompose import TOptions, Scan
-from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, UrhoWriteMaterial, UrhoExport
+from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, UrhoWriteMaterial, UrhoWriteMaterialsList, UrhoExport
 if DEBUG: from .testing import PrintUrhoData, PrintAll
     
 import os
@@ -263,6 +263,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.morphTan = False
 
         self.materials = False
+        self.materialsList = False
         self.textures = False
 
     # --- Accessory ---
@@ -501,6 +502,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False,
             update = update_func)
 
+    materialsList = BoolProperty(
+            name = "Materials text list",
+            description = "Write a txt file with the list of materials filenames",
+            default = False)
+
     textures = BoolProperty(
             name = "Copy textures",
             description = "Copy diffuse textures",
@@ -718,6 +724,10 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row = box.row()
         row.prop(settings, "materials")
         row.label("", icon='MATERIAL_DATA')
+        if settings.materials:
+            row = box.row()
+            row.separator()
+            row.prop(settings, "materialsList")
 
         row = box.row()
         row.prop(settings, "textures")
@@ -999,15 +1009,27 @@ def ExecuteUrhoExport(context):
                         log.error( "File already exist {:s}".format(filename) )
 
         if settings.materials:
-            materailsPath = composePath(settings.outputPath, "Materials", settings.useStandardDirs)
+            materialsPath = composePath(settings.outputPath, "Materials", settings.useStandardDirs)
+            materialsFilenames = []
             for uMaterial in uExportData.materials:
-                filename = os.path.join(materailsPath, uMaterial.name + os.path.extsep + "xml")
+                filename = os.path.join(materialsPath, uMaterial.name + os.path.extsep + "xml")
+                materialsFilenames.append(filename)
                 if not os.path.exists(filename) or settings.fileOverwrite:
                     log.info( "Creating file {:s}".format(filename) )
                     UrhoWriteMaterial(uMaterial, filename, settings.useStandardDirs)
                 else:
                     log.error( "File already exist {:s}".format(filename) )
                     
+            if settings.materialsList:
+                for uModel in uExportData.models:
+                    if uModel.geometries and uModel.materialsIndices:
+                        filename = os.path.join(modelsPath, uModel.name + os.path.extsep + "txt")
+                        if not os.path.exists(filename) or settings.fileOverwrite:
+                            log.info( "Creating file {:s}".format(filename) )
+                            UrhoWriteMaterialsList(uModel.materialsIndices, materialsFilenames, filename)
+                        else:
+                            log.error( "File already exist {:s}".format(filename) )
+
         if DEBUG: print("[TIME] Write in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 
         if settings.selectErrors:

@@ -316,6 +316,8 @@ class UrhoModel:
         self.bones = []
         # Bounding box, containd each LOD of each geometry
         self.boundingBox = BoundingBox()
+        # List of UrhoMaterial indices
+        self.materialsIndices = []
         
 # --- Animation classes ---
 
@@ -774,6 +776,20 @@ def UrhoWriteMaterial(material, filename, useStandardDirs):
     file.write(XmlToPrettyString(materialElem))
     file.close()
 
+def UrhoWriteMaterialsList(materialsIndices, materialsFilenames, filename):
+    
+    content = ""
+    for i in materialsIndices:
+        content += materialsFilenames[i] + "\n"
+
+    try:
+        file = open(filename, "w")
+    except Exception as e:
+        log.error("Cannot open file {:s} {:s}".format(filename, e))
+        return
+    file.write(content)
+    file.close()
+
 
 #---------------------------------------
 
@@ -1212,8 +1228,13 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
         uMaterial.normalTexName = tMaterial.normalTexName
         uMaterial.specularTexName = tMaterial.specularTexName
         uMaterial.lightmapTexName = tMaterial.lightmapTexName
-        
+
+        # To create the material list append this material index to the model material list
+        materialIndex = len(uMaterials)
+        uModel.materialsIndices.append(materialIndex)
+
         uMaterials.append(uMaterial)
+
        
 
  
