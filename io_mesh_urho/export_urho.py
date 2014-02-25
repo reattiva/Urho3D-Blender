@@ -538,7 +538,7 @@ def UrhoWriteModel(model, filename):
                     fw.writeFloat(vertex.weights[i][1])
             if mask & ELEMENT_BINDICES:
                 for i in range(4):
-                    fw.writeFloat(vertex.weights[i][0])
+                    fw.writeUByte(vertex.weights[i][0])
 
     # Number of index buffers
     fw.writeUInt(len(model.indexBuffers))
