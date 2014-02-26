@@ -987,12 +987,7 @@ def ExecuteUrhoExport(context):
                     filename = os.path.join(texturesPath, textureName)                
                     
                     if image.packed_file:
-                        originalPath = image.filepath
-                        image.filepath = filename
-                        image.save()
-                        # TODO: this gives errors if the path does not exist. 
-                        # What to do? set it to None? replace with the new?
-                        image.filepath = originalPath  
+                        image.save_render(filename)
                         log.info( "Texture unpacked {:s}".format(filename) )
                     elif not os.path.exists(srcFilename):
                         log.error( "Cannot find texture {:s}".format(srcFilename) )
