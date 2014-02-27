@@ -736,6 +736,35 @@ def OptimizeIndices(lodLevel):
 # Decompose armatures
 #--------------------
 
+def SetRestPosePosition(context, armatureObj):
+    if not armatureObj:
+        return None
+        
+    # Force the armature in the rest position (warning: https://developer.blender.org/T24674)
+    # This should reset bones matrices ok, but for sure it is not resetting the mesh tessfaces
+    # positions
+    savedPosePosition = armatureObj.data.pose_position
+    armatureObj.data.pose_position = 'REST'
+    
+    # This should help to recalculate all the mesh vertices, it is needed by decomposeMesh
+    # and maybe it helps decomposeArmature (but no problem was seen there)
+    # TODO: find the correct way, for sure it is not this
+    objects = context.scene.objects
+    savedObjectActive = objects.active
+    objects.active = armatureObj
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
+    objects.active = savedObjectActive
+        
+    return savedPosePosition
+
+def RestorePosePosition(armatureObj, savedValue):
+    if not armatureObj:
+        return
+    armatureObj.data.pose_position = savedValue
+
 def DerigifyArmature(armature):
 
     # Map {ORG bone name: Blender ORG bone} 
@@ -866,10 +895,6 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
         log.warning('Object {:s} should have the same origin as its armature {:s}'
                     .format(meshObj.name, armatureObj.name))
 
-    # Force the armature in the rest position (warning: https://developer.blender.org/T24674)
-    savedPosePosition = armature.pose_position
-    armature.pose_position = 'REST'
-
     if not armature.bones:
         log.warning('Armature {:s} has no bones'.format(armatureObj.name))
         return
@@ -964,8 +989,6 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
         else:
             log.critical("Bone {:s} already present in the map.".format(bone.name))
 
-    # Restore values
-    armature.pose_position = savedPosePosition
 
 #--------------------
 # Decompose animations
@@ -1854,8 +1877,8 @@ def Scan(context, tDataList, tOptions):
                 tOptions.lodDistance = 0.0
             
             # First we need to populate the skeleton, then animations and then geometries
+            armatureObj = None
             if tOptions.doBones:
-                armatureObj = None
                 # Check if obj has an armature parent, if it is attached to a bone (like hair to head bone)
                 # we'll skin it to the bone with 100% weight (but it shouldn't have bone vertex groups)
                 if obj.parent and obj.parent.type == 'ARMATURE':
@@ -1869,7 +1892,9 @@ def Scan(context, tDataList, tOptions):
                 # Decompose armature and animations
                 if armatureObj:
                     if not tData.bonesMap or not tOptions.mergeObjects:
+                        savedValue = SetRestPosePosition(context, armatureObj)
                         DecomposeArmature(scene, armatureObj, obj, tData, tOptions)
+                        RestorePosePosition(armatureObj, savedValue)
                     if tOptions.doAnimations and (not tData.animationsList or not tOptions.mergeObjects):
                         DecomposeActions(scene, armatureObj, tData, tOptions)
                 else:
@@ -1877,7 +1902,9 @@ def Scan(context, tDataList, tOptions):
 
             # Decompose geometries
             if tOptions.doGeometries:
-                DecomposeMesh(scene, obj, tData, tOptions, tData.errorsDict)
+                savedValue = SetRestPosePosition(context, armatureObj)
+                DecomposeMesh(scene, obj, tData, tOptions, tData.errorsDict)                
+                RestorePosePosition(armatureObj, savedValue)
 
     if noWork:
         log.warning("No objects to work on")
