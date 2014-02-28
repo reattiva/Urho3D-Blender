@@ -1822,7 +1822,7 @@ def Scan(context, tDataList, tOptions):
     lodName = None
     
     for obj in objs:
-        if obj.type == 'MESH':
+        if obj.type == 'MESH' and not obj.hide:
 
             noWork = False
         
