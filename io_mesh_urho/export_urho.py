@@ -7,6 +7,7 @@
 # http://docs.python.org/2/library/struct.html
 
 from mathutils import Vector, Matrix, Quaternion
+from math import cos, pi
 from xml.etree import ElementTree as ET
 from xml.dom import minidom
 import operator
@@ -88,7 +89,17 @@ def FloatListEqualError(v1, v2):
         return INFINITY
     #return sum(RelativeAbs(e1, e2) for e1, e2 in zip(v1, v2))
     return sum(abs(e1 - e2) for e1, e2 in zip(v1, v2))
-    
+
+def VectorDotProduct(v1, v2):
+    if v1 is None:
+        if v2 is None:
+            return 1
+        else:
+            return -1
+    if v2 is None:
+        return -1
+    return v1.dot(v2)
+
 #--------------------
 # Classes
 #--------------------
@@ -200,11 +211,15 @@ class UrhoVertex:
 
     # compare position, normal, UV with another vertex, returns the error
     def LodError(self, other):
+        # If the position is not equal, return max error
         if not FloatListAlmostEqual(self.pos, other.pos):
             return INFINITY
-        # UV are 0..1, normals -1..1, so this absolute error should be good 
-        return (FloatListEqualError(self.uv, other.uv) / 2 +
-                FloatListEqualError(self.normal, other.normal) / 6)
+        # If the angle between normals is above 30°, return max error (TODO: document this)
+        ncos = VectorDotProduct(self.normal, other.normal)
+        if ncos < cos(30 / 180 * pi):
+            return INFINITY
+        # UV are 0..1 x2, normals -1..1 x1, so this absolute error should be good 
+        return (FloatListEqualError(self.uv, other.uv)  + 1-ncos)
 
     # not unique id of this vertex based on its position
     def __hash__(self):
@@ -882,7 +897,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
     maxVertexPos = None
     # Maps old vertex index to Urho vertex buffer index and Urho vertex index
     modelIndexMap = {}
-
+    
     # For each geometry
     for tGeometry in tData.geometriesList:
         
@@ -930,6 +945,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
             # Maps old vertex index to new vertex index in the new Urho buffer
             indexMap = {}
             
+            # Errors helpers
+            warningNewVertices = False
+
             # Add vertices to the vertex buffer
             for tVertexIndex in tLodLevel.indexSet:
             
@@ -981,7 +999,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                     vertexBuffer.vertices.append(uVertex)
                     uVerticesMapList.append(uVertexIndex)
                     if i != 0:
-                        log.warning("LOD {:d} of object {:s} has new vertices.".format(i, uModel.name))
+                        warningNewVertices = True
                 
                 # Populate the 'old tVertex index' to 'new uVertex index' map
                 if not tVertexIndex in indexMap:
@@ -1011,6 +1029,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                 if vertexBuffer.elementMask & ELEMENT_POSITION:
                     uModel.boundingBox.merge(uVertex.pos)
 
+            if warningNewVertices:
+                log.warning("LOD {:d} of object {:s} Geometry{:d} has new vertices.".format(i, uModel.name, geomIndex))
+                            
             # Add the local vertex map to the global map
             for oldIndex, newIndex in indexMap.items():
                 # We create a map: Map[old index] = Set( Tuple(new buffer index, new vertex index) )
