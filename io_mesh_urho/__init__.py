@@ -638,7 +638,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         box.prop(settings, "selectErrors")
         box.prop(settings, "forceElements")
         box.prop(settings, "merge")
-        if settings.lods:
+        if settings.merge:
             row = box.row()
             row.separator()
             row.prop(settings, "mergeNotMaterials")
