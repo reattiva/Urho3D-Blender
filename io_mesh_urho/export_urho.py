@@ -888,6 +888,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
         
         uGeometry = UrhoGeometry()
         uModel.geometries.append(uGeometry)
+        geomIndex = len(uModel.geometries) - 1
 
         # Start value for geometry center (one for each geometry)
         center = Vector((0.0, 0.0, 0.0))
@@ -898,7 +899,10 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
             uGeometry.lodLevels.append(uLodLevel)
             
             if i == 0 and tLodLevel.distance != 0.0:
-                log.warning("First LOD of object {:s} should have 0.0 distance (now {:.3f})".format(uModel.name, tLodLevel.distance))
+                # Note: if we miss a LOD, its range will be covered by the following LOD (which is this one),
+                # this can can overlapping between LODs of different geometries
+                log.error("First LOD of object {:s} Geometry{:d} must have 0.0 distance (found {:.3f})"
+                          .format(uModel.name, geomIndex, tLodLevel.distance))
 
             uLodLevel.distance = tLodLevel.distance
             uLodLevel.primitiveType = TRIANGLE_LIST

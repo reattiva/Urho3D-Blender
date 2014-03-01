@@ -228,6 +228,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.selectErrors = True
         self.forceElements = False
         self.merge = False
+        self.mergeNotMaterials = False
         self.geometrySplit = False
         self.lods = False
         self.strictLods = True
@@ -292,8 +293,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     source = EnumProperty(
             name = "Source",
             description = "Objects to be exported",
-            items=(('ALL', "All", "export all the objects in the scene"),
-                   ('ONLY_SELECTED', "Only selected", "export only the selected objects")),
+            items=(('ALL', "All", "all the objects in the scene"),
+                   ('ONLY_SELECTED', "Only selected", "only the selected objects in visible layers")),
             default='ONLY_SELECTED')
 
     scale = FloatProperty(
@@ -336,10 +337,16 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False)
 
     merge = BoolProperty(
-            name = "Merge objects (uses current object name)",
-            description = "Merge all the objects in a single file (one geometry for object)",
+            name = "Merge objects",
+            description = ("Merge all the objects in a single file, one common geometry for each material. "
+                           "It uses the current object name."),
             default = False,
             update = update_func2)
+
+    mergeNotMaterials = BoolProperty(
+            name = "Don't merge materials",
+            description = "Create a different geometry for each material of each object",
+            default = False)
 
     geometrySplit = BoolProperty(
             name = "One vertex buffer per object",
@@ -631,6 +638,10 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         box.prop(settings, "selectErrors")
         box.prop(settings, "forceElements")
         box.prop(settings, "merge")
+        if settings.lods:
+            row = box.row()
+            row.separator()
+            row.prop(settings, "mergeNotMaterials")
         box.prop(settings, "geometrySplit")
         box.prop(settings, "optimizeIndices")
         box.prop(settings, "lods")
@@ -869,6 +880,7 @@ def ExecuteUrhoExport(context):
     
     # Copy from exporter UI settings to Decompose options
     tOptions.mergeObjects = settings.merge
+    tOptions.mergeNotMaterials = settings.mergeNotMaterials
     tOptions.doForceElements = settings.forceElements
     tOptions.useLods = settings.lods
     tOptions.onlySelected = (settings.source == 'ONLY_SELECTED')
@@ -1031,8 +1043,8 @@ def ExecuteUrhoExport(context):
                     continue
                 log.warning( "Selecting {:d} vertices on {:s} with '{:s}' errors".format(len(value), tData.objectName, key) )
                 indices.update(value)
-            if indices:
-                selectVertices(context, tData.objectName, indices)
+            if indices and tData.blenderObjectName:
+                selectVertices(context, tData.blenderObjectName, indices)
     
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     

@@ -45,6 +45,7 @@ import os
 import operator
 import heapq
 import logging
+import re
 
 log = logging.getLogger("ExportLogger")
 
@@ -277,6 +278,7 @@ class TAnimation:
 class TData:
     def __init__(self):
         self.objectName = None
+        self.blenderObjectName = None
         # List of all the TVertex of all the geometries
         self.verticesList = []
         # List of TGeometry, they contains triangles, triangles are made of vertex indices
@@ -296,10 +298,11 @@ class TData:
 
 class TOptions:
     def __init__(self):
-        self.newLod = True
-        self.lodDistance = 0.0
+        self.lodUpdatedGeometryIndices = set()
+        self.lodDistance = None
         self.doForceElements = False
         self.mergeObjects = False
+        self.mergeNotMaterials = False
         self.useLods = False
         self.onlySelected = False
         self.scale = 1.0
@@ -1454,11 +1457,12 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
         geometry = geometriesList[geometryIndex]
         
         # Get the last LOD level, or add a new one if requested in the options
-        if not geometry.lodLevels or (tOptions.newLod and geometryIndex not in updatedGeometryIndices):
-            lodLevelIndex = len(geometry.lodLevels)
+        lodLevelIndex = len(geometry.lodLevels)
+        if not geometry.lodLevels or geometryIndex not in tOptions.lodUpdatedGeometryIndices:
             tLodLevel = TLodLevel()
             tLodLevel.distance = tOptions.lodDistance
             geometry.lodLevels.append(tLodLevel)
+            tOptions.lodUpdatedGeometryIndices.add(geometryIndex)
             log.info("New LOD{:d} created for material {:s}".format(lodLevelIndex, materialName))
         else:
             tLodLevel = geometry.lodLevels[-1]
@@ -1617,8 +1621,6 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                 triangleList.append(triangle)
         # end loop vertices
     # end loop faces
-
-    tOptions.newLod = False
 
     if notBonesGroups:
         log.info("These groups are not used for bone deforms: {:s}".format( ", ".join(notBonesGroups) ))
@@ -1808,72 +1810,113 @@ def Scan(context, tDataList, tOptions):
     
     scene = context.scene
     
-    # Get all objects in the scene or only the selected
+    # Get all objects in the scene or only the selected in visible layers
     if tOptions.onlySelected: 
         objs = context.selected_objects 
     else:
         objs = scene.objects
     
-    # Sort by name
-    objs = sorted(objs, key = operator.attrgetter('name'))
+    objsTs = []
+    if tOptions.useLods:
+        # Search in the object's name if it is a '_LOD': <name>_LOD<distance>
+        # if we have no match, consider it as a LOD with distance 0
+        lodFound = False
+        for obj in objs:
+            mo = re.match("(.*)_LOD(\d+\.\d+|\d+)", obj.name)
+            if mo:
+                lodFound = True
+                lodName = mo.group(1)
+                lodDistance = float(mo.group(2))
+            else:
+                lodName = obj.name
+                lodDistance = 0.0
+            assert(lodName)
+            objsTs.append( (obj, lodName, lodDistance) )
+            print(">>",obj.name, lodName, lodDistance)
+            
+        if not lodFound:
+            log.warning("No LODs found")
+            
+        if tOptions.mergeObjects:
+            # Sort by distance then by LOD name
+            objsTs.sort(key=lambda x: (x[2],x[1]))
+        else:
+            # Sort by LOD name then by distance
+            objsTs.sort(key=lambda x: (x[1],x[2]))
+    else:
+        # Sort by name
+        #objs = sorted(objs, key = operator.attrgetter('name'))
+        objsTs = [(obj, obj.name, 0.0) for obj in objs]
 
     tData = None
     noWork = True
-    lodName = None
+    lodCurrentName = None
     
-    for obj in objs:
+    for objT in objsTs:
+    
+        obj = objT[0]
+        lodName = objT[1]
+        lodDistance = objT[2]
+        
         if obj.type == 'MESH' and not obj.hide:
 
+            log.info("---- Decomposing {:s} ----".format(obj.name))
             noWork = False
-        
-            name = obj.name
-            # Are we creating a new container (TData) for a new mesh?
-            createNew = True
             
-            log.info("---- Decomposing {:s} ----".format(name))
+            # Are we creating a new container (TData) for a new mesh?
+            # When merging is always False, when using LODs is True when changing object but False when adding a LOD.
+            createNew = True
 
-            # Search in the object's name if it is a '_LOD': <name>_LOD<distance>
-            # (LODs must have dot aligned distance, ex. nameLOD09.0, nameLOD12.0)
+            if tOptions.mergeObjects:
+                createNew = False
+                if tData and tOptions.mergeNotMaterials:
+                    # To create a new geometry in the same tData for each material of each object, clear the 'Material to Geometry' dict
+                    tData.materialGeometryMap.clear()
+                # If we are merging objects, use the current selected object name (only if it is a mesh)
+                if context.selected_objects:
+                    selectedObject = context.selected_objects[0]
+                    if selectedObject.type == 'MESH' and selectedObject.name:
+                        lodName = selectedObject.name
+
             if tOptions.useLods:
-                splitted = name.rsplit(sep="_LOD", maxsplit=1)
-                try:
-                    distance = float(splitted[1])
-                    name = splitted[0].rstrip()
-                    if lodName is None or lodName != name:
+                if tOptions.mergeObjects:
+                    # Merging objects: never create a new mesh, add a new LOD when distance changes
+                    if tOptions.lodDistance is None:
+                        # This is the first LOD of the merge
+                        if lodDistance != 0.0:
+                            log.warning("First LOD should have 0.0 distance (found {:.3f})".format(lodDistance))
+                    elif tOptions.lodDistance != lodDistance:
+                        # This is a lower LOD of the merge
+                        tOptions.lodUpdatedGeometryIndices.clear() # request new LOD
+                        if lodDistance < tOptions.lodDistance:
+                            log.critical("Wrong LOD sequence: {:d} then {:d}".format(tOptions.lodDistance, lodDistance) )
+                    tOptions.lodDistance = lodDistance
+                    log.info("Merging as {:s} LOD with distance {:.3f}".format(lodName, lodDistance))
+                else:
+                    # Multiple objects: create a new mesh (and new LOD) when name changes, add a new LOD when distance changes
+                    if lodCurrentName is None or lodCurrentName != lodName:
                         # This is the first LOD of a new object
-                        lodName = name
-                        if distance != 0.0:
-                            log.warning("First LOD should have 0.0 distance")
+                        tOptions.lodIndex = 0
+                        lodCurrentName = lodName
+                        if lodDistance != 0.0:
+                            log.warning("First LOD should have 0.0 distance (found {:.3f})".format(lodDistance))
                     else:
                         # This is a lower LOD of the same object
                         createNew = False
-                        tOptions.newLod = True
-                        if distance <= tOptions.lodDistance:
-                            log.warning("Wrong LOD sequence: {:d} then {:d}".format(tOptions.lodDistance, distance) )
-                        tOptions.lodDistance = distance
-                    log.info("Added as LOD with distance {:.3f}".format(distance))
-                except (IndexError, ValueError):
-                    log.warning("Object {:s} has no LODs".format(name) )
+                        tOptions.lodUpdatedGeometryIndices.clear() # request new LOD
+                        if lodDistance <= tOptions.lodDistance:
+                            log.warning("Wrong LOD sequence: {:d} then {:d}".format(tOptions.lodDistance, lodDistance) )
+                    tOptions.lodDistance = lodDistance
+                    log.info("Added as {:s} LOD with distance {:.3f}".format(lodName, lodDistance))
         
-            if tOptions.mergeObjects and createNew:
-                if tData:
-                    # To create a new geometry in the same tData, clear the 'Material to Geometry' dict
-                    tData.materialGeometryMap.clear()
-                if tOptions.useLods:
-                    log.warning("Merge and LODs should be not used together")
-                createNew = False
-            
             # Create a new container where to save decomposed data
             if not tData or createNew:
                 tData = TData()
-                tData.objectName = name
-                # If we are merging objects, use the current selected object name (only if it is a mesh)
-                if tOptions.mergeObjects and context.selected_objects:
-                    selectedObject = context.selected_objects[0]
-                    if selectedObject.type == 'MESH' and selectedObject.name:
-                        tData.objectName = selectedObject.name
+                tData.objectName = lodName
+                if not tOptions.mergeObjects:
+                    tData.blenderObjectName = obj.name
                 tDataList.append(tData)
-                tOptions.newLod = True
+                tOptions.lodUpdatedGeometryIndices.clear() # request new LOD
                 tOptions.lodDistance = 0.0
             
             # First we need to populate the skeleton, then animations and then geometries
@@ -1898,7 +1941,7 @@ def Scan(context, tDataList, tOptions):
                     if tOptions.doAnimations and (not tData.animationsList or not tOptions.mergeObjects):
                         DecomposeActions(scene, armatureObj, tData, tOptions)
                 else:
-                    log.warning("Object {:s} has no armature".format(name) )
+                    log.warning("Object {:s} has no armature".format(obj.name) )
 
             # Decompose geometries
             if tOptions.doGeometries:
