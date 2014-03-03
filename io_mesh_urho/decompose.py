@@ -152,6 +152,8 @@ class TGeometry:
     def __init__(self):
         # List of TLodLevel
         self.lodLevels = []
+        # Name of the Blender material associated
+        self.materialName = None
 
     def __str__(self):
         s = ""
@@ -1410,8 +1412,9 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
             material = mesh.materials[face.material_index]
         
         # Add the material if it is new
-        if tOptions.doMaterials and material and (not material.name in materialsList):
-            tMaterial = TMaterial(material.name)
+        materialName = material and material.name
+        if tOptions.doMaterials and materialName and (not materialName in materialsList):
+            tMaterial = TMaterial(materialName)
             materialsList.append(tMaterial)
 
             tMaterial.diffuseColor = material.diffuse_color
@@ -1443,14 +1446,19 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                     tMaterial.lightmapTexName = imageName
                 ##tMaterial.imagePath = bpy.path.abspath(faceUv.image.filepath)
 
-        # From the material name search for the geometry index, or add it to the map if missing
-        materialName = material and material.name
+        # If we are merging and want to have separate materials, add the object name
+        mapMaterialName = materialName
+        if tOptions.mergeObjects and tOptions.mergeNotMaterials:
+            mapMaterialName = materialName + "---" + meshObj.name
+        # From the material name search for the geometry index, or add it to the map if missing            
         try:
-            geometryIndex = materialGeometryMap[materialName]
+            geometryIndex = materialGeometryMap[mapMaterialName]
         except KeyError:
             geometryIndex = len(geometriesList)
-            geometriesList.append(TGeometry())
-            materialGeometryMap[materialName] = geometryIndex
+            newGeometry = TGeometry()
+            newGeometry.materialName = materialName
+            geometriesList.append(newGeometry)
+            materialGeometryMap[mapMaterialName] = geometryIndex
             log.info("New Geometry{:d} created for material {:s}".format(geometryIndex, materialName))
 
         # Get the geometry associated to the material
@@ -1881,9 +1889,6 @@ def Scan(context, tDataList, tOptions):
 
         if tOptions.mergeObjects:
             createNew = False
-            if tData and tOptions.mergeNotMaterials:
-                # To create a new geometry in the same tData for each material of each object, clear the 'Material to Geometry' dict
-                tData.materialGeometryMap.clear()
             # If we are merging objects, use the current selected object name (only if it is a mesh)
             if context.selected_objects:
                 selectedObject = context.selected_objects[0]
