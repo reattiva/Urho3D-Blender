@@ -333,8 +333,6 @@ class UrhoModel:
         self.bones = []
         # Bounding box, containd each LOD of each geometry
         self.boundingBox = BoundingBox()
-        # List of UrhoMaterial indices
-        self.materialsIndices = []
         
 # --- Animation classes ---
 
@@ -372,6 +370,15 @@ class UrhoTrack:
         self.mask = None
         # Keyframes
         self.keyframes = []
+
+class UrhoTrigger:
+    def __init__(self):
+        # Trigger name (not used in Urho, it uses the animation name)
+        self.name = None
+        # Normalized time (from 0 to 1)
+        self.normalizedTime = None
+        # Frame time (from 0 to animation length)
+        self.time = None
         
 class UrhoAnimation:
     def __init__(self):
@@ -381,6 +388,8 @@ class UrhoAnimation:
         self.length = 0.0
         # Tracks
         self.tracks = []
+        # Animation triggers
+        self.triggers = []
 
 class UrhoMaterial:
     def __init__(self):
@@ -445,7 +454,7 @@ class UrhoExportOptions:
                 
 
 #--------------------
-# Writers
+# Binary writer
 #--------------------
 
 class BinaryFileWriter:
@@ -499,7 +508,29 @@ class BinaryFileWriter:
     def writeFloat(self, v):
         self.buffer.extend(struct.pack("<f", v))
 
+#--------------------
+# XML formatter
+#--------------------
 
+def FloatToString(value):
+    return "{:g}".format(value)
+
+def Vector4ToString(vector):
+    return "{:g} {:g} {:g} {:g}".format(vector[0], vector[1], vector[2], vector[3])
+
+def XmlToPrettyString(elem):
+    rough = ET.tostring(elem, 'utf-8')
+    reparsed = minidom.parseString(rough)
+    pretty = reparsed.toprettyxml(indent="  ")
+    i = pretty.rfind("?>")
+    if i >= 0:
+        pretty = pretty[i+2:]
+    return pretty.strip()
+
+#--------------------
+# Writers
+#--------------------
+    
 def UrhoWriteModel(model, filename):
 
     if not model.vertexBuffers or not model.indexBuffers or not model.geometries:
@@ -722,21 +753,9 @@ def UrhoWriteAnimation(animation, filename):
 
     fw.close()
 
-        
+    
 def UrhoWriteMaterial(material, filename, useStandardDirs):
 
-    def Vector4ToString(vector):
-        return "{:g} {:g} {:g} {:g}".format(vector[0], vector[1], vector[2], vector[3])
-
-    def XmlToPrettyString(elem):
-        rough = ET.tostring(elem, 'utf-8')
-        reparsed = minidom.parseString(rough)
-        pretty = reparsed.toprettyxml(indent="  ")
-        i = pretty.rfind("?>")
-        if i >= 0:
-            pretty = pretty[i+2:]
-        return pretty.strip()
-    
     texturesPath = ""
     if useStandardDirs:
         texturesPath = "Textures/"
@@ -812,7 +831,28 @@ def UrhoWriteMaterialsList(materialFilenameList, filename, useStandardDirs):
     file.write(content)
     file.close()
 
+    
+# As described in Animation::Load, Animation::Save
+def UrhoWriteTriggers(triggersList, filename):
+    
+    triggersElem = ET.Element('animation')
 
+    for trigger in triggersList:
+        triggerElem = ET.SubElement(triggersElem, "trigger")
+        if trigger.normalizedTime:
+            triggerElem.set("normalizedtime", FloatToString(trigger.normalizedTime))
+        elif trigger.time:
+            triggerElem.set("time", FloatToString(trigger.time))
+    
+    try:
+        file = open(filename, "w")
+    except Exception as e:
+        log.error("Cannot open file {:s} {:s}".format(filename, e))
+        return
+    file.write(XmlToPrettyString(triggersElem))
+    file.close()
+        
+        
 #---------------------------------------
 
 # NOTE: only different geometries use different buffers
@@ -1220,7 +1260,15 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                 length = uTrack.keyframes[-1].time
                 if uAnimation.length is None or uAnimation.length < length:
                     uAnimation.length = length
-        
+
+        # Add the triggers for the animation
+        for tTrigger in tAnimation.triggers:
+            uTrigger = UrhoTrigger()
+            uTrigger.name = tTrigger.name
+            uTrigger.normalizedTime = tTrigger.normalizedTime
+            uTrigger.time = tTrigger.time
+            uAnimation.triggers.append(uTrigger)
+                    
         # Add only animations with tracks
         if uAnimation.tracks:
             uAnimations.append(uAnimation)

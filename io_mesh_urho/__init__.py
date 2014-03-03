@@ -41,7 +41,8 @@ if "decompose" in locals():
     if DEBUG and "testing" in locals(): imp.reload(testing)
 
 from .decompose import TOptions, Scan
-from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, UrhoWriteMaterial, UrhoWriteMaterialsList, UrhoExport
+from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
+                         UrhoWriteMaterial, UrhoWriteMaterialsList, UrhoWriteTriggers, UrhoExport
 if DEBUG: from .testing import PrintUrhoData, PrintAll
     
 import os
@@ -975,7 +976,15 @@ def ExecuteUrhoExport(context):
                 UrhoWriteAnimation(uAnimation, filename)
             else:
                 log.error( "File already exist {:s}".format(filename) )
-    
+
+            if uAnimation.triggers:
+                filename = os.path.join(modelsPath, uAnimation.name + os.path.extsep + "xml")
+                if not os.path.exists(filename) or settings.fileOverwrite:
+                    log.info( "Creating file {:s}".format(filename) )
+                    UrhoWriteTriggers(uAnimation.triggers, filename)
+                else:
+                    log.error( "File already exist {:s}".format(filename) )
+                
         if settings.textures:
             texturesPath = composePath(settings.outputPath, "Textures", settings.useStandardDirs)
             texturesList = []

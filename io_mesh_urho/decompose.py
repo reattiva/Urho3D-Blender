@@ -268,10 +268,20 @@ class TTrack:
         self.name = name
         self.frames = []
 
+class TTrigger:
+    def __init__(self, name):
+        # Trigger name (not used in Urho, it uses the animation name)
+        self.name = name
+        # Normalized time (from 0 to 1)
+        self.normalizedTime = None
+        # Frame time (from 0 to animation length)
+        self.time = None
+
 class TAnimation:
     def __init__(self, name):
         self.name = name
         self.tracks = []
+        self.triggers = []
 
 #---------------------
 # Export data classes
@@ -326,6 +336,7 @@ class TOptions:
         self.doStrips = False
         self.doTracks = False
         self.doTimeline = False
+        self.doTriggers = False
         self.doAnimationPos = True
         self.doAnimationRot = True
         self.doAnimationSca = True
@@ -1247,6 +1258,15 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 
             if tTrack.frames:
                 tAnimation.tracks.append(tTrack)
+
+        # Use timeline marker as Urho triggers
+        if tOptions.doTriggers:
+            log.info("Decomposing {:d} markers for animation {:s}"
+                     .format(len(scene.timeline_markers), tAnimation.name))
+            for marker in scene.timeline_markers:
+                tTrigger = TTrigger(marker.name)
+                tTrigger.time = marker.frame
+                tAnimation.triggers.append(tTrigger)
 
         if tAnimation.tracks:
             animationsList.append(tAnimation)
