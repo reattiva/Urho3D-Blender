@@ -282,6 +282,8 @@ class UrhoGeometry:
         self.lodLevels = []
         # Geometry center based on the position of each triangle of the first LOD
         self.center = Vector((0.0, 0.0, 0.0))
+        # Name of the material used (only for materials list)
+        self.uMaterialName = None
         
 class UrhoVertexMorph:
     def __init__(self):
@@ -791,11 +793,16 @@ def UrhoWriteMaterial(material, filename, useStandardDirs):
     file.write(XmlToPrettyString(materialElem))
     file.close()
 
-def UrhoWriteMaterialsList(materialsIndices, materialsFilenames, filename):
     
+def UrhoWriteMaterialsList(materialFilenameList, filename, useStandardDirs):
+    
+    materialsPath = ""
+    if useStandardDirs:
+        materialsPath = "Materials/"
+        
     content = ""
-    for i in materialsIndices:
-        content += materialsFilenames[i] + "\n"
+    for materialFilename in materialFilenameList:
+        content += materialsPath + materialFilename + "\n"
 
     try:
         file = open(filename, "w")
@@ -905,6 +912,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
         uModel.geometries.append(uGeometry)
         geomIndex = len(uModel.geometries) - 1
 
+        # Material name (can be None)
+        uGeometry.uMaterialName = tGeometry.materialName
+        
         # Start value for geometry center (one for each geometry)
         center = Vector((0.0, 0.0, 0.0))
         
@@ -1218,6 +1228,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
     uMaterials = uExportData.materials
     for tMaterial in tData.materialsList:
         uMaterial = UrhoMaterial()
+        # For material list to work the name must be the same 
         uMaterial.name = tMaterial.name
         
         alpha = 1.0
@@ -1254,12 +1265,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
         uMaterial.specularTexName = tMaterial.specularTexName
         uMaterial.lightmapTexName = tMaterial.lightmapTexName
 
-        # To create the material list append this material index to the model material list
-        materialIndex = len(uMaterials)
-        uModel.materialsIndices.append(materialIndex)
-
         uMaterials.append(uMaterial)
-
        
 
  

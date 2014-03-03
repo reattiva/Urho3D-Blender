@@ -1014,10 +1014,8 @@ def ExecuteUrhoExport(context):
 
         if settings.materials:
             materialsPath = composePath(settings.outputPath, "Materials", settings.useStandardDirs)
-            materialsFilenames = []
             for uMaterial in uExportData.materials:
                 filename = os.path.join(materialsPath, uMaterial.name + os.path.extsep + "xml")
-                materialsFilenames.append(filename)
                 if not os.path.exists(filename) or settings.fileOverwrite:
                     log.info( "Creating file {:s}".format(filename) )
                     UrhoWriteMaterial(uMaterial, filename, settings.useStandardDirs)
@@ -1026,11 +1024,19 @@ def ExecuteUrhoExport(context):
                     
             if settings.materialsList:
                 for uModel in uExportData.models:
-                    if uModel.geometries and uModel.materialsIndices:
+                    materialFilenameList = []
+                    for uGeometry in uModel.geometries:
+                        name = uGeometry.uMaterialName
+                        if name:
+                            name = name + os.path.extsep + "xml"
+                        else:
+                            name = "___NONE___" + os.path.extsep + "xml"
+                        materialFilenameList.append(name)
+                    if materialFilenameList:
                         filename = os.path.join(modelsPath, uModel.name + os.path.extsep + "txt")
                         if not os.path.exists(filename) or settings.fileOverwrite:
                             log.info( "Creating file {:s}".format(filename) )
-                            UrhoWriteMaterialsList(uModel.materialsIndices, materialsFilenames, filename)
+                            UrhoWriteMaterialsList(materialFilenameList, filename, settings.useStandardDirs)
                         else:
                             log.error( "File already exist {:s}".format(filename) )
 
