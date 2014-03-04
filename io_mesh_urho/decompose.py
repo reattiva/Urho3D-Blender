@@ -270,12 +270,12 @@ class TTrack:
 
 class TTrigger:
     def __init__(self, name):
-        # Trigger name (not used in Urho, it uses the animation name)
+        # Trigger name 
         self.name = name
-        # Normalized time (from 0 to 1)
-        self.normalizedTime = None
-        # Frame time (from 0 to animation length)
+        # Time in seconds
         self.time = None
+        # Event data (variant, see typeNames[] in Variant.cpp)
+        self.data = None
 
 class TAnimation:
     def __init__(self, name):
@@ -1265,7 +1265,8 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                      .format(len(scene.timeline_markers), tAnimation.name))
             for marker in scene.timeline_markers:
                 tTrigger = TTrigger(marker.name)
-                tTrigger.time = marker.frame
+                tTrigger.time = (marker.frame - frameOffset) / scene.render.fps
+                tTrigger.data = marker.name
                 tAnimation.triggers.append(tTrigger)
 
         if tAnimation.tracks:

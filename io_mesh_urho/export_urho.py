@@ -373,13 +373,13 @@ class UrhoTrack:
 
 class UrhoTrigger:
     def __init__(self):
-        # Trigger name (not used in Urho, it uses the animation name)
-        self.name = None
-        # Normalized time (from 0 to 1)
-        self.normalizedTime = None
-        # Frame time (from 0 to animation length)
+         # Trigger name 
+        self.name = ""
+        # Time in seconds: float
         self.time = None
-        
+        # Event data (variant, see typeNames[] in Variant.cpp)
+        self.data = None
+
 class UrhoAnimation:
     def __init__(self):
         # Animation name
@@ -839,11 +839,12 @@ def UrhoWriteTriggers(triggersList, filename):
 
     for trigger in triggersList:
         triggerElem = ET.SubElement(triggersElem, "trigger")
-        if trigger.normalizedTime:
-            triggerElem.set("normalizedtime", FloatToString(trigger.normalizedTime))
-        elif trigger.time:
-            triggerElem.set("time", FloatToString(trigger.time))
-    
+        triggerElem.set("time", FloatToString(trigger.time))
+        # We use a string variant, for other types See typeNames[] in Variant.cpp 
+        # and XMLElement::GetVariant()
+        triggerElem.set("type", "String")
+        triggerElem.set("value", str(trigger.data))
+        
     try:
         file = open(filename, "w")
     except Exception as e:
@@ -1265,8 +1266,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
         for tTrigger in tAnimation.triggers:
             uTrigger = UrhoTrigger()
             uTrigger.name = tTrigger.name
-            uTrigger.normalizedTime = tTrigger.normalizedTime
             uTrigger.time = tTrigger.time
+            uTrigger.data = tTrigger.data
             uAnimation.triggers.append(uTrigger)
                     
         # Add only animations with tracks
