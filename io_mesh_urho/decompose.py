@@ -1544,7 +1544,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                     tVertex.uv = Vector((0.0, 0.0))
             if tOptions.doGeometryUV2:
                 if faceUv2:
-                    uv2 = faceUv.uv[i]
+                    uv2 = faceUv2.uv[i]
                     tVertex.uv2 = Vector((uv2[0], 1.0 - uv2[1]))
                 elif tOptions.doForceElements:
                     tVertex.uv2 = Vector((0.0, 0.0))
