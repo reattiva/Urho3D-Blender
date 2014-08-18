@@ -1912,7 +1912,7 @@ def Scan(context, tDataList, tOptions):
             createNew = False
             # If we are merging objects, use the current selected object name (only if it is a mesh)
             if context.selected_objects:
-                selectedObject = context.selected_objects[0]
+                selectedObject = scene.objects.active
                 if selectedObject.type == 'MESH' and selectedObject.name:
                     lodName = selectedObject.name
 

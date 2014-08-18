@@ -1281,7 +1281,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
         uMaterial.name = tMaterial.name
         
         alpha = 1.0
-        if tMaterial.opacity and tMaterial.opacity < 1.0:
+        if tMaterial.opacity:
             alpha = tMaterial.opacity
 
         technique = "Techniques/NoTexture"
@@ -1291,9 +1291,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                 technique += "Normal"
             if tMaterial.specularTexName:
                 technique += "Spec"
-            if tMaterial.lightmapTexName and not tMaterial.normalTexName and not tMaterial.specularTexName:
-                technique += "LightMap"
-        if alpha < 1.0:
+            if tMaterial.lightmapTexName:
+                technique += "Emissive"
+        if tMaterial.opacity:
             technique += "Alpha";
 
         uMaterial.techniqueName = technique
