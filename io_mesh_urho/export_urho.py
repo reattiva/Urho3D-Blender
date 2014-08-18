@@ -1292,7 +1292,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
             if tMaterial.specularTexName:
                 technique += "Spec"
             if tMaterial.lightmapTexName:
-                technique += "Emissive"
+                technique += "LightMap"
         if tMaterial.opacity:
             technique += "Alpha";
 
