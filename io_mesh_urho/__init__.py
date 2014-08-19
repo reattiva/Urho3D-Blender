@@ -266,6 +266,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.morphs = False
         self.morphNor = True
         self.morphTan = False
+        self.morphMute = False
 
         self.materials = False
         self.materialsList = False
@@ -513,6 +514,12 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False,
             update = update_func)
 
+    morphMute = BoolProperty(
+            name = "Skip muted",
+            description = "Do not export morphs that have been muted in the Shape Keys panel",
+            default = False,
+            update = update_func)
+
     materials = BoolProperty(
             name = "Export materials",
             description = "Export XML materials",
@@ -739,6 +746,9 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             col = row.column()
             col.enabled = settings.morphNor and settings.geometryTan
             col.prop(settings, "morphTan")
+            row = box.row()
+            row.separator()
+            row.prop(settings, "morphMute")
 
         row = box.row()
         row.prop(settings, "materials")
@@ -929,6 +939,7 @@ def ExecuteUrhoExport(context):
     tOptions.doMorphNor = settings.morphNor
     tOptions.doMorphTan = settings.morphTan
     tOptions.doMorphUV = settings.morphTan
+    tOptions.doMorphMute = settings.morphMute
     tOptions.doOptimizeIndices = settings.optimizeIndices
     tOptions.doMaterials = settings.materials or settings.textures
     tOptions.bonesGlobalOrigin = settings.bonesGlobalOrigin
