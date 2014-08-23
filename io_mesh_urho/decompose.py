@@ -23,7 +23,7 @@
 #  http://www.blender.org/documentation/blender_python_api_2_66_4/bpy.types.AnimData.html
 # Vertex color:
 #  http://www.blender.org/documentation/blender_python_api_2_66_4/bpy.types.MeshColor.html
-# Moprhs (Shape keys):
+# Morphs (Shape keys):
 #  http://www.blender.org/documentation/blender_python_api_2_66_4/bpy.types.Key.html
 #  http://www.blender.org/documentation/blender_python_api_2_66_4/bpy.types.ShapeKey.html
 
@@ -1695,6 +1695,9 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
     for j, block in enumerate(keyBlocks):
         # Skip 'Basis' shape key
         if j == 0:
+            continue
+        # Skip muted shape keys
+        if block.mute:
             continue
         
         tMorph = TMorph(block.name)

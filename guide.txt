@@ -108,7 +108,7 @@ Here you can select what vertex data to export:
   - Weights: export vertices bones weights
   - Color, Alpha: export vertices colors (see Colors below)
 - Morphs
-Export shape keys (Morphs):
+Export not muted shape keys (Morphs):
   - Normal: export morphed vertices normals
   - Tangent: export morphed vertices tangents
 - Export materials
