@@ -112,7 +112,9 @@ Export not muted shape keys (Morphs):
   - Normal: export morphed vertices normals
   - Tangent: export morphed vertices tangents
 - Export materials
-
+Export the object materials (see Materials below).
+  - Materials text list: in the models folder create a text file with the same name of the model, inside there is
+    the list of the material files exported that are used by the model.
 - Copy textures  
 Copy the textures used by the objects materials to the output folder. Sometimes this does not work, especially when
 the images are embedded in the blend file are no format was specified for them.
@@ -146,6 +148,50 @@ the alpha. You need to specify these maps by appending "_RGB" and "_ALPHA" respe
 suffixes can be used together but also alone, if they are missing the first layer will be choosen for RGB only.
 For the alpha color layer use a scale of grey (black=transparent, white=opaque), starting from black or white you can
 use the Value slider (V in HSV) to easy change a greyscale color.
+
+===========
+ Materials
+===========
+The exporter will try to generate Urho3D materials that are similar to what you see in Blender, they will not be the
+exact same but at least you have a starting point.
+This feature works only with the 'Blender Render' engine not Cycles. It will probably need some corrections.
+
+This is how a Blender material option (on the left) is converted to a Urho3D material option (on the right):
+
+--- Blender Material ---
+Diffuse.Color * Diffuse.Intesity       = MatDiffColor rgb
+Transparency.Alpha [value if enabled]  = MatDiffColor alpha
+Specular.Color * Specular.Intesity     = MatSpecColor rgb
+Specular.Hardness                      = MatSpecColor power
+
+--- Blender Object Data ---
+Normals.DoubleSided [if true]          = set material 'cull' and 'shadowcull' to 'none' (=double sided material)
+
+Note: the double sided option is true by default in Blender and so will be the materials exported. To manually remove
+double side from a XML material you can simply delete the 'cull' and 'shadowcull' lines.
+
+--- Blender Textures ---
+Influence.Diffuse.Color [if enabled]   = diffuse  texture and add 'Diff'     to technique
+Influence.Geometry.Normal [if enabled] = normal   texture and add 'Normal'   to technique
+Influence.Specular.Color [if enabled]  = specular texture and add 'Specular' to technique
+Influence.Shading.Emit [if enabled]    = emissive texture and add 'Emissive' to technique
+Influence.Shading.Emit [value]         = MatEmissiveColor rgb
+[if texture slot name contains '_AMBIENTLIGHT'] = emissive texture and add 'AO'       to technique
+[if texture slot name contains '_LIGHTMAP']     = emissive texture and add 'LightMap' to technique
+
+Note: Textures must have Type='Image or Movie' and Mapping.Coordinates='UV'.
+Note: The emissive color exported is a shade of grey, you can manually change it to any color.
+Note: Emissive, AO, LightMap are exclusive.
+Note: AO and LightMap use the coordinates UV2, so the texture slot name will be something like: 'name_LIGHTMAP_UV2'.
+
+============
+ Light maps
+============
+To define a texture to be exported as a light map you can insert '_AMBIENTLIGHT' or '_LIGHTMAP' in the texture slot 
+name. You need to use a different set of UV coordinates and add '_UV2' at the end of the texture slot name or the
+UV Map name.
+It is simpler to use '_AMBIENTLIGHT' because many techniques are already present in Urho3D, you only need to add 
+a Zone in your scene, its Ambient Color will modulate the light map.
 
 
 
