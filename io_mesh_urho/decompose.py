@@ -1349,16 +1349,23 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
     # Check if the mesh has UV data
     uvs = None
     uvs2 = None
-    # In every texture of every material search if the name ends in "_UV1" or "_UV2"
+    # In every texture of every material search if the name ends in "_UV1" or "_UV2",
+    # search also in names of the UV maps
     for material in mesh.materials:
         if not material:
             continue
         for texture in material.texture_slots:
-            if texture and texture.texture_coords == "UV" and texture.uv_layer:
-                if texture.name.endswith("_UV") or texture.name.endswith("_UV1"):
-                    uvs = mesh.tessface_uv_textures[texture.uv_layer].data
-                elif texture.name.endswith("_UV2"):
-                    uvs2 = mesh.tessface_uv_textures[texture.uv_layer].data
+            if not texture or texture.texture_coords != "UV":
+                continue
+            tex = texture.name
+            uvMap = texture.uv_layer
+            if not tex or not uvMap or not (uvMap in mesh.uv_textures.keys()):
+                continue
+            if tex.endswith("_UV") or uvMap.endswith("_UV") or \
+               tex.endswith("_UV1") or uvMap.endswith("_UV1"):
+                uvs = mesh.tessface_uv_textures[uvMap].data
+            elif tex.endswith("_UV2") or uvMap.endswith("_UV2"):
+                uvs2 = mesh.tessface_uv_textures[uvMap].data
     # If still we don't have UV1, try the current UV map selected
     if not uvs and mesh.tessface_uv_textures.active:
         uvs = mesh.tessface_uv_textures.active.data
