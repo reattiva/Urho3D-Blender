@@ -39,7 +39,7 @@ import bpy
 import bmesh
 import math
 import time
-from mathutils import Vector, Matrix, Quaternion
+from mathutils import Vector, Matrix, Quaternion, Color
 from collections import OrderedDict
 import os
 import operator
@@ -204,6 +204,10 @@ class TMaterial:
         self.specularIntensity = None
         # Specular hardness (1.0)
         self.specularHardness = None
+        # Emit color (0.0, 0.0, 0.0)
+        self.emitColor = None
+        # Emit factor (1.0)
+        self.emitIntensity = None
         # Opacity (1.0) 
         self.opacity = None
         # Material is two sided
@@ -214,8 +218,12 @@ class TMaterial:
         self.normalTexName = None
         # Specular texture filename (no path)
         self.specularTexName = None
-        # Emissive texture filename (no path)
+        # Emit texture filename (no path)
+        self.emitTexName = None
+        # Light map texture filename (no path)
         self.lightmapTexName = None
+        # Ambient light map texture filename (light map modulated by ambient color)(no path)
+        self.ambientLightTexName = None
 
     def __eq__(self, other):
         if hasattr(other, 'name'):
@@ -1470,10 +1478,16 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                     tMaterial.normalTexName = imageName
                 if texture.use_map_color_spec:
                     tMaterial.specularTexName = imageName
+                if texture.use_map_emit:
+                    tMaterial.emitTexName = imageName
+                    tMaterial.emitColor = Color((1.0, 1.0, 1.0))
+                    tMaterial.emitIntensity = texture.emit_factor
                 if "_LIGHTMAP" in texture.name:
                     tMaterial.lightmapTexName = imageName
+                if "_AMBIENTLIGHT" in texture.name:
+                    tMaterial.ambientLightTexName = imageName
                 ##tMaterial.imagePath = bpy.path.abspath(faceUv.image.filepath)
-
+        
         # If we are merging and want to have separate materials, add the object name
         mapMaterialName = materialName
         if tOptions.mergeObjects and tOptions.mergeNotMaterials:

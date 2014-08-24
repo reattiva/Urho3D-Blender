@@ -401,6 +401,8 @@ class UrhoMaterial:
         self.diffuseColor = None
         # Material specular color (0.0, 0.0, 0.0, 0.0) (r,g,b,power)
         self.specularColor = None
+        # Material emissive color (0.0, 0.0, 0.0) (r,g,b)
+        self.emissiveColor = None
         # Diffuse color texture filename (no path)
         self.diffuseTexName = None
         # Normal texture filename (no path)
@@ -408,7 +410,7 @@ class UrhoMaterial:
         # Specular texture filename (no path)
         self.specularTexName = None
         # Emissive texture filename (no path)
-        self.lightmapTexName = None
+        self.emissiveTexName = None
         # Material is two sided
         self.twoSided = False
 
@@ -423,7 +425,7 @@ class UrhoMaterial:
         elif index == 2:
             return self.specularTexName
         elif index == 3:
-            return self.lightmapTexName
+            return self.emissiveTexName
         return None
 
     def setTextureName(self, index, name):
@@ -434,7 +436,7 @@ class UrhoMaterial:
         elif index == 2:
             self.specularTexName = name
         elif index == 3:
-            self.lightmapTexName = name
+            self.emissiveTexName = name
 
 # --- Export options classes ---
 
@@ -514,6 +516,9 @@ class BinaryFileWriter:
 
 def FloatToString(value):
     return "{:g}".format(value)
+
+def Vector3ToString(vector):
+    return "{:g} {:g} {:g}".format(vector[0], vector[1], vector[2])
 
 def Vector4ToString(vector):
     return "{:g} {:g} {:g} {:g}".format(vector[0], vector[1], vector[2], vector[3])
@@ -783,10 +788,10 @@ def UrhoWriteMaterial(material, filename, useStandardDirs):
         specularElem.set("unit", "specular")
         specularElem.set("name", texturesPath + material.specularTexName)
 
-    if material.lightmapTexName:
+    if material.emissiveTexName:
         emissiveElem = ET.SubElement(materialElem, "texture")
         emissiveElem.set("unit", "emissive")
-        emissiveElem.set("name", texturesPath + material.lightmapTexName)
+        emissiveElem.set("name", texturesPath + material.emissiveTexName)
 
     if material.diffuseColor:
         diffuseColorElem = ET.SubElement(materialElem, "parameter")
@@ -797,6 +802,11 @@ def UrhoWriteMaterial(material, filename, useStandardDirs):
         specularElem = ET.SubElement(materialElem, "parameter")
         specularElem.set("name", "MatSpecColor")
         specularElem.set("value", Vector4ToString(material.specularColor) )
+
+    if material.emissiveColor:
+        emissiveElem = ET.SubElement(materialElem, "parameter")
+        emissiveElem.set("name", "MatEmissiveColor")
+        emissiveElem.set("value", Vector3ToString(material.emissiveColor) )
 
     if material.twoSided:
         cullElem = ET.SubElement(materialElem, "cull")
@@ -1284,6 +1294,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
         if tMaterial.opacity:
             alpha = tMaterial.opacity
 
+        isEmissive = False
+        emissiveTexture = None
+        
         technique = "Techniques/NoTexture"
         if tMaterial.diffuseTexName:
             technique = "Techniques/Diff"
@@ -1291,8 +1304,18 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                 technique += "Normal"
             if tMaterial.specularTexName:
                 technique += "Spec"
-            if tMaterial.lightmapTexName:
+            # Emission map, light map and AO (Ambient light map) use the same
+            # emission texture slot, we have to pick one
+            if tMaterial.emitTexName:
+                technique += "Emissive"
+                emissiveTexture = tMaterial.emitTexName
+                isEmissive = True
+            elif tMaterial.ambientLightTexName:
+                technique += "AO"
+                emissiveTexture = tMaterial.ambientLightTexName
+            elif tMaterial.lightmapTexName:
                 technique += "LightMap"
+                emissiveTexture = tMaterial.lightmapTexName
         if tMaterial.opacity:
             technique += "Alpha";
 
@@ -1307,12 +1330,16 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
             power = tMaterial.specularHardness
             uMaterial.specularColor = (specular.r, specular.g, specular.b, power)
 
+        if isEmissive and tMaterial.emitColor and tMaterial.emitIntensity:
+            emissive = tMaterial.emitColor * tMaterial.emitIntensity
+            uMaterial.emissiveColor = (emissive.r, emissive.g, emissive.b)
+
         uMaterial.twoSided = tMaterial.twoSided
 
         uMaterial.diffuseTexName = tMaterial.diffuseTexName
         uMaterial.normalTexName = tMaterial.normalTexName
         uMaterial.specularTexName = tMaterial.specularTexName
-        uMaterial.lightmapTexName = tMaterial.lightmapTexName
+        uMaterial.emissiveTexName = emissiveTexture
 
         uMaterials.append(uMaterial)
        
