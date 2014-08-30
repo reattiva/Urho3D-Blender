@@ -1318,6 +1318,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                 emissiveTexture = tMaterial.lightmapTexName
         if tMaterial.opacity:
             technique += "Alpha";
+            if tMaterial.alphaMask:
+                technique += "Mask"
 
         uMaterial.techniqueName = technique
 

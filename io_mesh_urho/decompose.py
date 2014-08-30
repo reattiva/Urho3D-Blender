@@ -210,6 +210,8 @@ class TMaterial:
         self.emitIntensity = None
         # Opacity (1.0) 
         self.opacity = None
+        # Alpha Mask
+        self.alphaMask = False
         # Material is two sided
         self.twoSided = False
         # Diffuse color texture filename (no path)
@@ -1461,7 +1463,9 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
             tMaterial.twoSided = mesh.show_double_sided 
             if material.use_transparency:
                 tMaterial.opacity = material.alpha
-                
+                if material.transparency_method == 'MASK':
+                    tMaterial.alphaMask = True
+
             # In reverse order so the first slots have precedence
             for texture in reversed(material.texture_slots):
                 if texture is None or texture.texture_coords != 'UV':
