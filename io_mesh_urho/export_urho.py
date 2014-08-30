@@ -128,7 +128,7 @@ class BoundingBox:
         if point.z > self.max.z:
             self.max.z = point.z
 
-# Exception rasied when we add a vertex with more or less elements than
+# Exception raised when we add a vertex with more or less elements than
 # the vertex buffer.
 class MaskError(Exception):
     pass
@@ -228,7 +228,7 @@ class UrhoVertex:
             hashValue ^= hash(self.pos.x) ^ hash(self.pos.y) ^ hash(self.pos.z)
         return hashValue
             
-    # used by moprh vertex calculations (see AnimatedModel::ApplyMorph)
+    # used by morph vertex calculations (see AnimatedModel::ApplyMorph)
     def subtract(self, other, mask):
         if mask & ELEMENT_POSITION:
             self.pos -= other.pos

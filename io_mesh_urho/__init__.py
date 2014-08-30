@@ -188,7 +188,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Morph tangent needs normal
         if not self.morphNor:
             self.morphTan = False
-        # Derigify and Only deform or Only Visible are imcompatible
+        # Derigify and Only deform or Only Visible are incompatible
         if self.derigify:
             self.onlyDeformBones = False
             self.onlyVisibleBones = False
@@ -207,7 +207,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         if self.updatingProperties:
             return
         self.updatingProperties = True
-        # Derigify and Only deform or Only Visible are imcompatible
+        # Derigify and Only deform or Only Visible are incompatible
         if self.onlyDeformBones or self.onlyVisibleBones:
             self.derigify = False
         # Select errors and merge are incompatible
@@ -856,7 +856,7 @@ def selectVertices(context, objectName, indicesList):
     bpy.context.tool_settings.mesh_select_mode = sel_mode 
 
 
-# Select vertices on a object
+# Create output path
 def composePath(path, standardDir, useStandardDirs):
     if useStandardDirs:
         path = os.path.join(path, standardDir)
@@ -978,7 +978,7 @@ def ExecuteUrhoExport(context):
                     log.info( "Creating file {:s}".format(filename) )
                     UrhoWriteModel(uModel, filename)
                 else:
-                    log.error( "File already exist {:s}".format(filename) )
+                    log.error( "File already exists {:s}".format(filename) )
             
         for uAnimation in uExportData.animations:
             filename = os.path.join(modelsPath, uAnimation.name + os.path.extsep + "ani")
@@ -986,7 +986,7 @@ def ExecuteUrhoExport(context):
                 log.info( "Creating file {:s}".format(filename) )
                 UrhoWriteAnimation(uAnimation, filename)
             else:
-                log.error( "File already exist {:s}".format(filename) )
+                log.error( "File already exists {:s}".format(filename) )
 
             if uAnimation.triggers:
                 filename = os.path.join(modelsPath, uAnimation.name + os.path.extsep + "xml")
@@ -994,7 +994,7 @@ def ExecuteUrhoExport(context):
                     log.info( "Creating file {:s}".format(filename) )
                     UrhoWriteTriggers(uAnimation.triggers, filename)
                 else:
-                    log.error( "File already exist {:s}".format(filename) )
+                    log.error( "File already exists {:s}".format(filename) )
                 
         if settings.textures:
             texturesPath = composePath(settings.outputPath, "Textures", settings.useStandardDirs)
@@ -1030,7 +1030,7 @@ def ExecuteUrhoExport(context):
                         except:
                             log.error( "Cannot copy texture in {:s}".format(filename) )
                     else:
-                        log.error( "File already exist {:s}".format(filename) )
+                        log.error( "File already exists {:s}".format(filename) )
 
         if settings.materials:
             materialsPath = composePath(settings.outputPath, "Materials", settings.useStandardDirs)
@@ -1040,7 +1040,7 @@ def ExecuteUrhoExport(context):
                     log.info( "Creating file {:s}".format(filename) )
                     UrhoWriteMaterial(uMaterial, filename, settings.useStandardDirs)
                 else:
-                    log.error( "File already exist {:s}".format(filename) )
+                    log.error( "File already exists {:s}".format(filename) )
                     
             if settings.materialsList:
                 for uModel in uExportData.models:
@@ -1055,10 +1055,10 @@ def ExecuteUrhoExport(context):
                     if materialFilenameList:
                         filename = os.path.join(modelsPath, uModel.name + os.path.extsep + "txt")
                         if not os.path.exists(filename) or settings.fileOverwrite:
-                            log.info( "Creating file {:s}".format(filename) )
+                            log.info( "Creating Material List file {:s}".format(filename) )
                             UrhoWriteMaterialsList(materialFilenameList, filename, settings.useStandardDirs)
                         else:
-                            log.error( "File already exist {:s}".format(filename) )
+                            log.error( "File already exists {:s}".format(filename) )
 
         if DEBUG: print("[TIME] Write in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 

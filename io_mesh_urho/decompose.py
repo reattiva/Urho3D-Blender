@@ -1041,7 +1041,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
         if tOptions.globalOrigin and originMatrix != Matrix.Identity(4):
             # Blender moves/rotates the armature together with the mesh, so if you set a global origin
             # for Mesh and Actions you'll have twice the transformations. Set only one global origin.
-            log.warning("Use local origin for the object otherwise trasformations are applied twice")
+            log.warning("Use local origin for the object otherwise transformations are applied twice")
     
     # Save current action and frame, we'll restore them later
     savedAction = armatureObj.animation_data.action
