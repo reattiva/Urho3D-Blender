@@ -42,11 +42,11 @@ if "decompose" in locals():
     imp.reload(utils)
     if DEBUG and "testing" in locals(): imp.reload(testing)
 
-from .decompose    import TOptions, Scan
-from .export_urho  import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
-                          UrhoWriteMaterial, UrhoWriteMaterialsList, UrhoWriteTriggers, UrhoExport
+from .decompose import TOptions, Scan
+from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
+                         UrhoWriteMaterial, UrhoWriteMaterialsList, UrhoWriteTriggers, UrhoExport
 from .export_scene import SOptions, UrhoExportScene
-from .utils        import ComposePath
+from .utils import ComposePath
 if DEBUG: from .testing import PrintUrhoData, PrintAll
     
 import os
@@ -57,6 +57,7 @@ import logging
 
 import bpy
 from bpy.props import StringProperty, BoolProperty, EnumProperty, FloatProperty, IntProperty
+from bpy.app.handlers import persistent
 
 #--------------------
 # Loggers
@@ -818,17 +819,23 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.prop(settings, "physics")
             row.label("", icon='PHYSICS')
 
-#--------------------
-# Register Unregister
-#--------------------
-        
-# This is a test to set the default path if the path edit box is empty        
-def PostLoad(dummy):
 
+#--------------------
+# Handlers
+#--------------------
+
+# Called after loading a new blend. Set the default path if the path edit box is empty.        
+@persistent
+def PostLoad(dummy):
     addonPrefs = bpy.context.user_preferences.addons[__name__].preferences
     settings = bpy.context.scene.urho_exportsettings
     if addonPrefs.outputPath:
         settings.outputPath = addonPrefs.outputPath
+
+
+#--------------------
+# Register Unregister
+#--------------------
 
 # Called when the addon is enabled. Here we register out UI classes so they can be 
 # used by Python scripts.
@@ -848,8 +855,8 @@ def register():
     
     bpy.context.user_preferences.filepaths.use_relative_paths = False
     
-    #if not PostLoad in bpy.app.handlers.load_post:
-    #    bpy.app.handlers.load_post.append(PostLoad)
+    if not PostLoad in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(PostLoad)
 
 
 # Note: the script __init__.py is executed only the first time the addons is enabled. After that
@@ -873,8 +880,8 @@ def unregister():
     
     del bpy.types.Scene.urho_exportsettings
     
-    #if PostLoad in bpy.app.handlers.load_post:
-    #    bpy.app.handlers.load_post.remove(PostLoad)
+    if PostLoad in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(PostLoad)
 
 
 #--------------------
