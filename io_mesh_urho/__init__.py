@@ -38,11 +38,15 @@ if "decompose" in locals():
     import imp
     imp.reload(decompose)
     imp.reload(export_urho)
+    imp.reload(export_scene)
+    imp.reload(utils)
     if DEBUG and "testing" in locals(): imp.reload(testing)
 
-from .decompose import TOptions, Scan
-from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
-                         UrhoWriteMaterial, UrhoWriteMaterialsList, UrhoWriteTriggers, UrhoExport
+from .decompose    import TOptions, Scan
+from .export_urho  import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
+                          UrhoWriteMaterial, UrhoWriteMaterialsList, UrhoWriteTriggers, UrhoExport
+from .export_scene import SOptions, UrhoExportScene
+from .utils        import ComposePath
 if DEBUG: from .testing import PrintUrhoData, PrintAll
     
 import os
@@ -270,6 +274,12 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.materials = False
         self.materialsList = False
         self.textures = False
+
+        self.prefabs = True
+        self.individualPrefab = False
+        self.collectivePrefab = False
+        self.scenePrefab = False
+        self.physics = False
 
     # --- Accessory ---
 
@@ -530,6 +540,36 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False,
             update = update_func)            
 
+    prefabs = BoolProperty(
+            name = "Export Urho Prefabs",
+            description = "Export Urho3D XML objects (prefabs)",
+            default = False,
+            update = update_func)
+
+    individualPrefab = BoolProperty(
+            name = "Individual Prefabs",
+            description = "Create one prefab per exported object (so if \"Merge objects\" option is checked, export one prefab for the merged object only)",
+            default = False,
+            update = update_func)
+
+    collectivePrefab = BoolProperty(
+            name = "One Collective",
+            description = "Create one unic/global prefab containing every exported objects. An empty root node holds the objects.",
+            default = False,
+            update = update_func)
+
+    scenePrefab = BoolProperty(
+            name = "Scene Prefab",
+            description = "Same content as 'Collective', but outputs a Urho3D xml scene (with Octree, PhysicsWorld and DebugRenderer)",
+            default = False,
+            update = update_func)
+
+    physics = BoolProperty(
+            name = "Apply physics",
+            description = "Generate physics for the root node. Default triangleMesh shape expecting a \"Physics\" model located in the same folder",
+            default = True,
+            update = update_func)
+
     bonesGlobalOrigin = BoolProperty(name = "Bones global origin", default = False)
     actionsGlobalOrigin = BoolProperty(name = "Actions global origin", default = False)
     
@@ -752,6 +792,32 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row.prop(settings, "textures")
         row.label("", icon='TEXTURE_DATA')
 
+        row = box.row()
+        row.prop(settings, "prefabs")
+        row.label("", icon='MOD_OCEAN')
+
+        if settings.prefabs:
+            row = box.row()
+            row.separator()
+            row.prop(settings, "individualPrefab")
+            row.label("", icon='MOD_BUILD')
+
+            if not settings.merge:
+                row = box.row()
+                row.separator()
+                row.prop(settings, "collectivePrefab")
+                row.label("", icon='URL')
+
+            row = box.row()
+            row.separator()
+            row.prop(settings, "scenePrefab")
+            row.label("", icon='WORLD')
+
+            row = box.row()
+            row.separator()
+            row.prop(settings, "physics")
+            row.label("", icon='PHYSICS')
+
 #--------------------
 # Register Unregister
 #--------------------
@@ -856,16 +922,6 @@ def selectVertices(context, objectName, indicesList):
     bpy.context.tool_settings.mesh_select_mode = sel_mode 
 
 
-# Create output path
-def composePath(path, standardDir, useStandardDirs):
-    if useStandardDirs:
-        path = os.path.join(path, standardDir)
-
-    if not os.path.isdir(path):
-        log.info( "Creating path {:s}".format(path) )
-        os.makedirs(path)
-        
-    return path
 
 #-------------------------------------------------------------------------
 # Export main
@@ -888,6 +944,11 @@ def ExecuteUrhoExport(context):
     tDataList = []
     # Decompose options
     tOptions = TOptions()
+
+    # UModel list for scene export
+    uModelList = []
+    # Scene export options
+    sOptions = SOptions()
     
     # Copy from exporter UI settings to Decompose options
     tOptions.mergeObjects = settings.merge
@@ -934,6 +995,12 @@ def ExecuteUrhoExport(context):
     tOptions.bonesGlobalOrigin = settings.bonesGlobalOrigin
     tOptions.actionsGlobalOrigin = settings.actionsGlobalOrigin
     
+    sOptions.mergeObjects = settings.merge
+    sOptions.doIndividualPrefab = settings.individualPrefab
+    sOptions.doCollectivePrefab = settings.collectivePrefab
+    sOptions.doScenePrefab = settings.scenePrefab
+    sOptions.doPhysics = settings.physics
+    
     if tOptions.mergeObjects and not tOptions.globalOrigin:
         log.warning("Probably you should use Origin = Global")
 
@@ -967,10 +1034,12 @@ def ExecuteUrhoExport(context):
         #PrintUrhoData(uExportData, "FIRST20,POS,COLOR")
         #PrintUrhoData(uExportData, 0x22B)
 
-        modelsPath = composePath(settings.outputPath, "Models", settings.useStandardDirs)
+        modelsPath = ComposePath(settings.outputPath, "Models", settings.useStandardDirs)
             
         for uModel in uExportData.models:
             if uModel.geometries:
+                uModelList.append(uModel)
+                
                 filename = os.path.join(modelsPath, uModel.name + os.path.extsep + "mdl")
                 #filename = bpy.path.ensure_ext(filename, ".mdl")
                 #filename = bpy.path.clean_name(filename)
@@ -997,7 +1066,7 @@ def ExecuteUrhoExport(context):
                     log.error( "File already exists {:s}".format(filename) )
                 
         if settings.textures:
-            texturesPath = composePath(settings.outputPath, "Textures", settings.useStandardDirs)
+            texturesPath = ComposePath(settings.outputPath, "Textures", settings.useStandardDirs)
             texturesList = []
             for uMaterial in uExportData.materials:
                 for i in range(0, uMaterial.getTexturesNumber()):
@@ -1033,7 +1102,7 @@ def ExecuteUrhoExport(context):
                         log.error( "File already exists {:s}".format(filename) )
 
         if settings.materials:
-            materialsPath = composePath(settings.outputPath, "Materials", settings.useStandardDirs)
+            materialsPath = ComposePath(settings.outputPath, "Materials", settings.useStandardDirs)
             for uMaterial in uExportData.materials:
                 filename = os.path.join(materialsPath, uMaterial.name + os.path.extsep + "xml")
                 if not os.path.exists(filename) or settings.fileOverwrite:
@@ -1071,6 +1140,10 @@ def ExecuteUrhoExport(context):
                 indices.update(value)
             if indices and tData.blenderObjectName:
                 selectVertices(context, tData.blenderObjectName, indices)
+    
+    # Export scene and nodes
+    if settings.prefabs:
+        UrhoExportScene(context, uModelList, settings, sOptions)
     
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     
