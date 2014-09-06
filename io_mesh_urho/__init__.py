@@ -44,11 +44,11 @@ if "decompose" in locals():
 
 from .decompose import TOptions, Scan
 from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
-                         UrhoWriteMaterial, UrhoWriteMaterialsList, UrhoWriteTriggers, UrhoExport
-from .export_scene import SOptions, UrhoExportScene
-from .utils import ComposePath
+                         UrhoWriteTriggers, UrhoExport
+from .export_scene import SOptions, UrhoScene, UrhoExportScene, UrhoWriteMaterial, UrhoWriteMaterialsList
+from .utils import PathType, FOptions, GetFilepath, CheckFilepath
 if DEBUG: from .testing import PrintUrhoData, PrintAll
-    
+
 import os
 import time
 import sys
@@ -946,14 +946,17 @@ def ExecuteUrhoExport(context):
     
     # Get exporter UI settings
     settings = context.scene.urho_exportsettings
-    
+
+    # File utils options
+    fOptions = FOptions()
+
     # List where to store tData (decomposed objects)
     tDataList = []
     # Decompose options
     tOptions = TOptions()
 
-    # UModel list for scene export
-    uModelList = []
+    # Scene export data
+    uScene = UrhoScene(context.scene)
     # Scene export options
     sOptions = SOptions()
     
@@ -1007,7 +1010,25 @@ def ExecuteUrhoExport(context):
     sOptions.doCollectivePrefab = settings.collectivePrefab
     sOptions.doScenePrefab = settings.scenePrefab
     sOptions.doPhysics = settings.physics
+
+    fOptions.useStandardDirs = settings.useStandardDirs
+    fOptions.fileOverwrite = settings.fileOverwrite
+    fOptions.paths[PathType.ROOT] = settings.outputPath
+    fOptions.paths[PathType.MODELS] = "Models"
+    fOptions.paths[PathType.ANIMATIONS] = "Models"
+    fOptions.paths[PathType.TRIGGERS] = fOptions.paths[PathType.ANIMATIONS]
+    fOptions.paths[PathType.MATERIALS] = "Materials"
+    fOptions.paths[PathType.TECHNIQUES] = ""
+    fOptions.paths[PathType.TEXTURES] = "Textures"
+    fOptions.paths[PathType.MATLIST] = "Models"
+    fOptions.paths[PathType.OBJECTS] = "Objects"
+    fOptions.paths[PathType.SCENES] = "Scenes"
     
+    if not settings.outputPath:
+        log.error( "Output path is not set" )
+        ## !!FIXME
+        return
+
     if tOptions.mergeObjects and not tOptions.globalOrigin:
         log.warning("Probably you should use Origin = Global")
 
@@ -1015,10 +1036,6 @@ def ExecuteUrhoExport(context):
     if DEBUG: ttt = time.time() #!TIME
     Scan(context, tDataList, tOptions)
     if DEBUG: print("[TIME] Decompose in {:.4f} sec".format(time.time() - ttt) ) #!TIME
-
-    if not settings.outputPath:
-        log.error( "Output path is not set" )
-        tDataList.clear()
 
     # Export each decomposed object
     for tData in tDataList:
@@ -1038,103 +1055,77 @@ def ExecuteUrhoExport(context):
         if DEBUG: print("[TIME] Export in {:.4f} sec".format(time.time() - ttt) ) #!TIME
         if DEBUG: ttt = time.time() #!TIME
 
-        #PrintUrhoData(uExportData, "FIRST20,POS,COLOR")
-        #PrintUrhoData(uExportData, 0x22B)
+        uScene.Load(uExportData, tData.blenderObjectName)
 
-        modelsPath = ComposePath(settings.outputPath, "Models", settings.useStandardDirs)
-            
         for uModel in uExportData.models:
             if uModel.geometries:
-                uModelList.append(uModel)
-                
-                filename = os.path.join(modelsPath, uModel.name + os.path.extsep + "mdl")
-                #filename = bpy.path.ensure_ext(filename, ".mdl")
-                #filename = bpy.path.clean_name(filename)
-                if not os.path.exists(filename) or settings.fileOverwrite:
-                    log.info( "Creating file {:s}".format(filename) )
-                    UrhoWriteModel(uModel, filename)
-                else:
-                    log.error( "File already exists {:s}".format(filename) )
+                filepath = GetFilepath(PathType.MODELS, uModel.name, fOptions)
+                if CheckFilepath(filepath[0], fOptions):
+                    uScene.AddFile(PathType.MODELS, uModel.name, filepath[1])
+                    log.info( "Creating model {:s}".format(filepath[1]) )
+                    UrhoWriteModel(uModel, filepath[0]) 
             
         for uAnimation in uExportData.animations:
-            filename = os.path.join(modelsPath, uAnimation.name + os.path.extsep + "ani")
-            if not os.path.exists(filename) or settings.fileOverwrite:
-                log.info( "Creating file {:s}".format(filename) )
-                UrhoWriteAnimation(uAnimation, filename)
-            else:
-                log.error( "File already exists {:s}".format(filename) )
+            filepath = GetFilepath(PathType.ANIMATIONS, uAnimation.name, fOptions)
+            if CheckFilepath(filepath[0], fOptions):
+                uScene.AddFile(PathType.ANIMATIONS, uAnimation.name, filepath[1])
+                log.info( "Creating animation {:s}".format(filepath[1]) )
+                UrhoWriteAnimation(uAnimation, filepath[0])
 
             if uAnimation.triggers:
-                filename = os.path.join(modelsPath, uAnimation.name + os.path.extsep + "xml")
-                if not os.path.exists(filename) or settings.fileOverwrite:
-                    log.info( "Creating file {:s}".format(filename) )
-                    UrhoWriteTriggers(uAnimation.triggers, filename)
-                else:
-                    log.error( "File already exists {:s}".format(filename) )
+                filepath = GetFilepath(PathType.TRIGGERS, uAnimation.name, fOptions)
+                if CheckFilepath(filepath[0], fOptions):
+                    uScene.AddFile(PathType.TRIGGERS, uAnimation.name, filepath[1])
+                    log.info( "Creating triggers {:s}".format(filepath[1]) )
+                    UrhoWriteTriggers(uAnimation.triggers, filepath[0])
                 
         if settings.textures:
-            texturesPath = ComposePath(settings.outputPath, "Textures", settings.useStandardDirs)
-            texturesList = []
             for uMaterial in uExportData.materials:
-                for i in range(0, uMaterial.getTexturesNumber()):
-                    textureName = uMaterial.getTextureName(i)
-                    if textureName is None or textureName in texturesList:
+                for textureName in uMaterial.getTextures():
+                    # Check the texture name (it can be a filename)
+                    if textureName is None:
                         continue
-                    texturesList.append(textureName)
-                    
+                    # Check if the Blender image data exists
                     image = bpy.data.images[textureName]
                     if image is None:
-                        uMaterial.setTextureName(i, None)
                         continue
-
-                    if '.' not in textureName:
-                        textureName += '.png'
-                        uMaterial.setTextureName(i, textureName)
-                    
+                    # Get the texture file full path
                     srcFilename = bpy.path.abspath(image.filepath)
-                    filename = os.path.join(texturesPath, textureName)                
-                    
-                    if image.packed_file:
-                        image.save_render(filename)
-                        log.info( "Texture unpacked {:s}".format(filename) )
-                    elif not os.path.exists(srcFilename):
-                        log.error( "Cannot find texture {:s}".format(srcFilename) )
-                    elif not os.path.exists(filename) or settings.fileOverwrite:
-                        try:
-                            shutil.copyfile(src = srcFilename, dst = filename)
-                            log.info( "Texture copied {:s}".format(filename) )
-                        except:
-                            log.error( "Cannot copy texture in {:s}".format(filename) )
-                    else:
-                        log.error( "File already exists {:s}".format(filename) )
+                    # Get the destination file full path (preserve the extension)
+                    fOptions.preserveExtTemp = True
+                    filepath = GetFilepath(PathType.TEXTURES, textureName, fOptions)
+                    # Copy or unpack the texture
+                    if CheckFilepath(filepath[0], fOptions):
+                        # Check if already exported
+                        if not uScene.AddFile(PathType.TEXTURES, textureName, filepath[1]):
+                            continue
+                        if image.packed_file:
+                            log.info( "Unpacking texture {:s}".format(filepath[1]) )
+                            image.save_render(filepath[0])
+                        elif not os.path.exists(srcFilename):
+                            log.error( "Miissing source texture {:s}".format(srcFilename) )
+                        else:
+                            try:
+                                log.info( "Copying texture {:s}".format(filepath[1]) )
+                                shutil.copyfile(src = srcFilename, dst = filepath[0])
+                            except:
+                                log.error( "Cannot copy texture to {:s}".format(filepath[0]) )
 
         if settings.materials:
-            materialsPath = ComposePath(settings.outputPath, "Materials", settings.useStandardDirs)
             for uMaterial in uExportData.materials:
-                filename = os.path.join(materialsPath, uMaterial.name + os.path.extsep + "xml")
-                if not os.path.exists(filename) or settings.fileOverwrite:
-                    log.info( "Creating file {:s}".format(filename) )
-                    UrhoWriteMaterial(uMaterial, filename, settings.useStandardDirs)
-                else:
-                    log.error( "File already exists {:s}".format(filename) )
+                filepath = GetFilepath(PathType.MATERIALS, uMaterial.name, fOptions)
+                if CheckFilepath(filepath[0], fOptions):
+                    uScene.AddFile(PathType.MATERIALS, uMaterial.name, filepath[1])
+                    log.info( "Creating material {:s}".format(filepath[1]) )
+                    UrhoWriteMaterial(uScene, uMaterial, filepath[0], fOptions)
                     
             if settings.materialsList:
                 for uModel in uExportData.models:
-                    materialFilenameList = []
-                    for uGeometry in uModel.geometries:
-                        name = uGeometry.uMaterialName
-                        if name:
-                            name = name + os.path.extsep + "xml"
-                        else:
-                            name = "___NONE___" + os.path.extsep + "xml"
-                        materialFilenameList.append(name)
-                    if materialFilenameList:
-                        filename = os.path.join(modelsPath, uModel.name + os.path.extsep + "txt")
-                        if not os.path.exists(filename) or settings.fileOverwrite:
-                            log.info( "Creating Material List file {:s}".format(filename) )
-                            UrhoWriteMaterialsList(materialFilenameList, filename, settings.useStandardDirs)
-                        else:
-                            log.error( "File already exists {:s}".format(filename) )
+                    filepath = GetFilepath(PathType.MATLIST, uModel.name, fOptions)
+                    if CheckFilepath(filepath[0], fOptions):
+                        uScene.AddFile(PathType.MATLIST, uModel.name, filepath[1])
+                        log.info( "Creating materials list {:s}".format(filepath[1]) )
+                        UrhoWriteMaterialsList(uScene, uModel, filepath[0])
 
         if DEBUG: print("[TIME] Write in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 
@@ -1150,7 +1141,7 @@ def ExecuteUrhoExport(context):
     
     # Export scene and nodes
     if settings.prefabs:
-        UrhoExportScene(context, uModelList, settings, sOptions)
+        UrhoExportScene(context, uScene, sOptions, fOptions)
     
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     

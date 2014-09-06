@@ -3,13 +3,20 @@
 # This script is licensed as public domain.
 #
 
-from .utils       import ComposePath
-from .export_urho import FloatToString, BinaryFileWriter, XmlToPrettyString
-from xml.etree    import ElementTree as ET
+from .utils import PathType, GetFilepath, CheckFilepath
+from .export_urho import FloatToString, BinaryFileWriter, FloatToString, \
+                         Vector3ToString, Vector4ToString, XmlToPrettyString
+from xml.etree import ElementTree as ET
+import bpy
 import os
 import logging
 
 log = logging.getLogger("ExportLogger")
+
+
+#-------------------------
+# Scene and nodes classes
+#-------------------------
 
 # Options for scene and nodes export
 class SOptions:
@@ -21,34 +28,216 @@ class SOptions:
         self.mergeObjects = False
 
 
-# Write individual prefabs
-def WriteIndividualPrefabs(model, sceneName, physics, filename, useStandardDirs):
+class UrhoSceneMaterial:
+    def __init__(self):
+        # Material name
+        self.name = None
+        # List\Tuple of textures
+        self.texturesList = None
+
+    def Load(self, uExportData, uGeometry):
+        self.name = uGeometry.uMaterialName
+        for uMaterial in uExportData.materials:
+            if uMaterial.name == self.name:
+                self.texturesList = uMaterial.getTextures()
+                break
+
+
+class UrhoSceneModel:
+    def __init__(self):
+        # Model name
+        self.name = None
+        # Blender object name
+        self.objectName = None
+        # Parent Blender object name
+        self.parentObjectName = None
+        # Model type
+        self.type = None
+        # List of UrhoSceneMaterial
+        self.materialsList = []
+
+    def Load(self, uExportData, uModel, objectName):
+        self.name = uModel.name
+
+        self.blenderObjectName = objectName
+        if objectName:
+            parentObject = bpy.data.objects[objectName].parent
+            if parentObject and parentObject.type == 'MESH':
+                self.parentObjectName = parentObject.name
+
+        if len(uModel.bones) > 0:
+            self.type = "AnimatedModel"
+        else:
+            self.type = "StaticModel"
+
+        for uGeometry in uModel.geometries:
+            uSceneMaterial = UrhoSceneMaterial()
+            uSceneMaterial.Load(uExportData, uGeometry)
+            self.materialsList.append(uSceneMaterial)
+
+
+class UrhoScene:
+    def __init__(self, blenderScene):
+        # Blender scene name
+        self.blenderSceneName = blenderScene.name
+        # List of UrhoSceneModel
+        self.modelsList = []
+        # List of all files
+        self.files = {}
+
+    # name must be unique in its type
+    def AddFile(self, pathType, name, fileUrhoPath):
+        if not name:
+            log.critical("Name null type:{:s} path:{:s}".format(pathType, fileUrhoPath) )
+            return False
+        if name in self.files:
+            log.critical("Already added type:{:s} name:{:s}".format(pathType, name) )
+            return False
+        self.files[pathType+name] = fileUrhoPath
+        return True
+
+    def FindFile(self, pathType, name):
+        try:
+            return self.files[pathType+name]
+        except KeyError:
+            return None
+
+    def Load(self, uExportData, objectName):
+        for uModel in uExportData.models:
+            uSceneModel = UrhoSceneModel()
+            uSceneModel.Load(uExportData, uModel, objectName)
+            self.modelsList.append(uSceneModel)
+
+
+#------------------------
+# Export materials
+#------------------------
+
+# Write XML to a text file
+def WriteXmlFile(xmlContent, filepath, fOptions):
+    try:
+        file = open(filepath, "w")
+    except Exception as e:
+        log.error("Cannot open file {:s} {:s}".format(filepath, e))
+        return
+    try:
+        file.write(XmlToPrettyString(xmlContent))
+    except Exception as e:
+        log.error("Cannot write to file {:s} {:s}".format(filepath, e))
+    file.close()
+
+
+def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
+
+    materialElem = ET.Element('material')
+
+    #comment = ET.Comment("Material {:s} created from Blender".format(uMaterial.name))
+    #materialElem.append(comment)
+
+    # Technique
+    techniquFile = GetFilepath(PathType.TECHNIQUES, uMaterial.techniqueName, fOptions)
+    techniqueElem = ET.SubElement(materialElem, "technique")
+    techniqueElem.set("name", techniquFile[1])
+
+    # Tectures
+    if uMaterial.diffuseTexName:
+        diffuseElem = ET.SubElement(materialElem, "texture")
+        diffuseElem.set("unit", "diffuse")
+        diffuseElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.diffuseTexName))
+
+    if uMaterial.normalTexName:
+        normalElem = ET.SubElement(materialElem, "texture")
+        normalElem.set("unit", "normal")
+        normalElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.normalTexName))
+
+    if uMaterial.specularTexName:
+        specularElem = ET.SubElement(materialElem, "texture")
+        specularElem.set("unit", "specular")
+        specularElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.specularTexName))
+
+    if uMaterial.emissiveTexName:
+        emissiveElem = ET.SubElement(materialElem, "texture")
+        emissiveElem.set("unit", "emissive")
+        emissiveElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.emissiveTexName))
+
+    # Parameters
+    if uMaterial.diffuseColor:
+        diffuseColorElem = ET.SubElement(materialElem, "parameter")
+        diffuseColorElem.set("name", "MatDiffColor")
+        diffuseColorElem.set("value", Vector4ToString(uMaterial.diffuseColor) )
+
+    if uMaterial.specularColor:
+        specularElem = ET.SubElement(materialElem, "parameter")
+        specularElem.set("name", "MatSpecColor")
+        specularElem.set("value", Vector4ToString(uMaterial.specularColor) )
+
+    if uMaterial.emissiveColor:
+        emissiveElem = ET.SubElement(materialElem, "parameter")
+        emissiveElem.set("name", "MatEmissiveColor")
+        emissiveElem.set("value", Vector3ToString(uMaterial.emissiveColor) )
+
+    if uMaterial.twoSided:
+        cullElem = ET.SubElement(materialElem, "cull")
+        cullElem.set("value", "none")
+        shadowCullElem = ET.SubElement(materialElem, "shadowcull")
+        shadowCullElem.set("value", "none")
+
+    try:
+        file = open(filepath, "w")
+    except Exception as e:
+        log.error("Cannot open file {:s} {:s}".format(filepath, e))
+        return
+    file.write(XmlToPrettyString(materialElem))
+    file.close()
+
+
+def UrhoWriteMaterialsList(uScene, uModel, filepath):
+
+    # Search for the model in the UrhoScene
+    for uSceneModel in uScene.modelsList:
+        if uSceneModel.name == uModel.name:
+            break
+    else:
+        return
+
+    # Get the model materials and their corresponding file paths
+    content = ""
+    for uSceneMaterial in uSceneModel.materialsList:
+        file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
+        # If the file is missing add a placeholder to preserve the order
+        if not file:
+            file = "null"
+        content += file + "\n"
+
+    try:
+        file = open(filepath, "w")
+    except Exception as e:
+        log.error("Cannot open file {:s} {:s}".format(filepath, e))
+        return
+    file.write(content)
+    file.close()
+
+
+#------------------------
+# Export scene and nodes
+#------------------------
+
+# Generate individual prefabs XML
+def IndividualPrefabXml(uScene, uSceneModel, sOptions):
 
     # Set first node ID
     nodeID = 0x1000000
 
-    # Check for Static or Animated Model
-    modelType = "StaticModel"
-    if len(model.bones) > 0:
-        modelType = "AnimatedModel"
-
-    # Create node name
-    nodeName = ""
-    if not useStandardDirs:
-        nodeName = "Models/" + sceneName + "/" + model.name + os.path.extsep + "mdl"
-    else: 
-        nodeName = "Models/" + model.name + os.path.extsep + "mdl"
+    # Get model file relative path
+    modelFile = uScene.FindFile(PathType.MODELS, uSceneModel.name)
 
     # Gather materials
     materials = ""
-    for uGeometry in model.geometries:			
-        name = uGeometry.uMaterialName
-        if name:
-            if not useStandardDirs:
-                name = "Models/" + sceneName + "/Materials/" + name + os.path.extsep + "xml"
-            else: 
-                name = "Materials/" + name + os.path.extsep + "xml"
-            materials = materials + ";" + name
+    for uSceneMaterial in uSceneModel.materialsList:
+        file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
+        if file is None:
+            file = ""
+        materials += ";" + file
 
     # Generate xml prefab content
     rootNodeElem = ET.Element('node')
@@ -56,21 +245,21 @@ def WriteIndividualPrefabs(model, sceneName, physics, filename, useStandardDirs)
 
     modelNameElem = ET.SubElement(rootNodeElem, "attribute")
     modelNameElem.set("name", "Name")
-    modelNameElem.set("value", model.name)
+    modelNameElem.set("value", uSceneModel.name)
 
     typeElem = ET.SubElement(rootNodeElem, "component")
-    typeElem.set("type", modelType)
+    typeElem.set("type", uSceneModel.type)
     typeElem.set("id", "{:d}".format(nodeID))
 
     modelElem = ET.SubElement(typeElem, "attribute")
     modelElem.set("name", "Model")
-    modelElem.set("value", "Model;" + nodeName)
+    modelElem.set("value", "Model;" + modelFile)
 
     materialElem = ET.SubElement(typeElem, "attribute")
     materialElem.set("name", "Material")
     materialElem.set("value", "Material" + materials)
 
-    if physics:
+    if sOptions.doPhysics:
         bodyElem = ET.SubElement(rootNodeElem, "component")
         bodyElem.set("type", "RigidBody")
         bodyElem.set("id", "{:d}".format(nodeID+1))
@@ -97,54 +286,26 @@ def WriteIndividualPrefabs(model, sceneName, physics, filename, useStandardDirs)
 
         physicsModelElem = ET.SubElement(shapeElem, "attribute")
         physicsModelElem.set("name", "Model")
-        physicsModelElem.set("value", "Model;" + nodeName)
+        physicsModelElem.set("value", "Model;" + modelFile)
 
-    # Write xml prefab file using Ascii xml for size and readability matters #TODO: full binary
-    fw = BinaryFileWriter()
-    try:
-        fw.open(filename)
-    except Exception as e:
-        log.error("Cannot open file {:s} {:s}".format(filename, e))
-        return
-    fw.writeAsciiStr(XmlToPrettyString(rootNodeElem)) #fw.writeAsciiStr(XmlToPrettyString(content))
-    fw.close()
-
-
-# Write prefab xml file
-def WritePrefab(file, content, overwrite):
-    if not os.path.exists(file) or overwrite:
-        log.info( "Creating/Updating Prefab file {:s}".format(file) )
-        fw = BinaryFileWriter()
-        try:
-            fw.open(file)
-        except Exception as e:
-            log.error("Cannot open prefab file {:s} {:s}".format(file, e))
-            return
-        fw.writeAsciiStr(XmlToPrettyString(content))
-        fw.close()
-    else:
-        log.error( "Prefab file already exists {:s}".format(file) )
+    return rootNodeElem
 
 
 # Export scene and nodes
-def UrhoExportScene(context, uModelList, settings, sOptions):
+def UrhoExportScene(context, uScene, sOptions, fOptions):
 
-    # Create folders and filenames
-    sceneName = context.scene.name
-        
-    if sOptions.doCollectivePrefab or sOptions.doIndividualPrefab:
-        objectsPath = ComposePath(settings.outputPath, "Objects", settings.useStandardDirs)
-
-    # Create "TestScenes" folder an use scene name for export
-    if sOptions.doScenePrefab:
-        scenesPath = ComposePath(settings.outputPath, "Scenes", settings.useStandardDirs)
-        sceneFullFilename = os.path.join(scenesPath, sceneName + os.path.extsep + "xml")
-
-    # Use scene name for the export in "TestObjects" folder
-    if sOptions.doCollectivePrefab: 
-        sceneFilename = os.path.join(objectsPath, sceneName + os.path.extsep + "xml")
-
-    # For Individual prefabs (sOptions.doIndividualPrefab) we will set filename later as it is specific to each exported object
+    blenderScene = bpy.data.scenes[uScene.blenderSceneName]
+    
+    '''
+    # Re-order meshes
+    orderedModelsList = []
+    for obj in blenderScene.objects:
+        if obj.type == 'MESH':
+            for uSceneModel in uScene.modelsList:
+                if uSceneModel.objectName == obj.name:
+                    orderedModelsList.append(uSceneModel)
+    uScene.modelsList = orderedModelsList
+    '''
 
     a = {}
     k = 0x1000000   # node ID
@@ -184,19 +345,14 @@ def UrhoExportScene(context, uModelList, settings, sOptions):
     else: 
         # Root node
         root = ET.Element('node') 
-        
+
     root.set("id", "{:d}".format(k))
     a["{:d}".format(m)] = ET.SubElement(root, "attribute")
     a["{:d}".format(m)].set("name", "Name")
-    a["{:d}".format(m)].set("value", sceneName)
-    
+    a["{:d}".format(m)].set("value", uScene.blenderSceneName)
+
     # Create physics stuff for the root node
     if sOptions.doPhysics:
-        if not settings.useStandardDirs:
-            physicsModel = "Models/" + sceneName + "/" + "Physics" + os.path.extsep + "mdl"
-        else: 
-            physicsModel = "Models/" + "Physics" + os.path.extsep + "mdl"
-
         a["{:d}".format(m)] = ET.SubElement(root, "component")
         a["{:d}".format(m)].set("type", "RigidBody")
         a["{:d}".format(m)].set("id", "{:d}".format(compoID))
@@ -218,63 +374,55 @@ def UrhoExportScene(context, uModelList, settings, sOptions):
         a["{:d}".format(m+1)].set("name", "Shape Type")
         a["{:d}".format(m+1)].set("value", "TriangleMesh")
 
+        physicsModelFile = GetFilepath(PathType.MODELS, "Physics", fOptions)[1]
         a["{:d}".format(m+2)] = ET.SubElement(a["{:d}".format(m)], "attribute")
         a["{:d}".format(m+2)].set("name", "Model")
-        a["{:d}".format(m+2)].set("value", "Model;" + physicsModel)
+        a["{:d}".format(m+2)].set("value", "Model;" + physicsModelFile)
         m += 2
         compoID += 2
 
     # Export each decomposed object
-    for uModel in uModelList:
+    for uSceneModel in uScene.modelsList:
 
-        # Check for Static or Animated Model
-        modelType = "StaticModel"
-        if len(uModel.bones) > 0:
-            modelType = "AnimatedModel"
-
-        # Create node name
-        if not settings.useStandardDirs:
-            nodeName = "Models/" + sceneName + "/" + uModel.name + os.path.extsep + "mdl"
-        else: 
-            nodeName = "Models/" + uModel.name + os.path.extsep + "mdl"
+        # Get model file relative path
+        modelFile = uScene.FindFile(PathType.MODELS, uSceneModel.name)
 
         # Gather materials
         materials = ""
-        for uGeometry in uModel.geometries:			
-            name = uGeometry.uMaterialName
-            if name:
-                if not settings.useStandardDirs:
-                    name = "Models/" + sceneName + "/Materials/" + name + os.path.extsep + "xml"
-                else: 
-                    name = "Materials/" + name + os.path.extsep + "xml"
-                materials = materials + ";" + name
+        for uSceneMaterial in uSceneModel.materialsList:
+            file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
+            if file is None:
+                file = ""
+            materials += ";" + file
 
         # Generate XML Content
         k += 1
-        modelNode = uModel.name
-        ## !!FIXME
-        #if modelType == "StaticModel" and uModel.parentName:
-        #    a[modelNode] = ET.SubElement(a[uModel.parentName], "node") #If child node, parent to parent object instead of root
-        #else: 
-        #    a[modelNode] = ET.SubElement(root, "node")
-        a[modelNode] = ET.SubElement(root, "node")
-        ## !!FIXME
-            
+        modelNode = uSceneModel.name
+
+        # If child node, parent to parent object instead of root
+        if uSceneModel.type == "StaticModel" and uSceneModel.parentObjectName:
+            for usm in uScene.modelsList:
+                if usm.objectName == uSceneModel.parentObjectName:
+                    a[modelNode] = ET.SubElement(a[usm.name], "node") 
+                    break;
+        else: 
+            a[modelNode] = ET.SubElement(root, "node")
+
         a[modelNode].set("id", "{:d}".format(k))
 
         a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
         a["{:d}".format(m)].set("name", "Name")
-        a["{:d}".format(m)].set("value", uModel.name)
+        a["{:d}".format(m)].set("value", uSceneModel.name)
         m += 1
 
         a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
-        a["{:d}".format(m)].set("type", modelType)
+        a["{:d}".format(m)].set("type", uSceneModel.type)
         a["{:d}".format(m)].set("id", "{:d}".format(compoID))
         m += 1
 
         a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)], "attribute")
         a["{:d}".format(m)].set("name", "Model")
-        a["{:d}".format(m)].set("value", "Model;" + nodeName)
+        a["{:d}".format(m)].set("value", "Model;" + modelFile)
         m += 1
 
         a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
@@ -285,25 +433,30 @@ def UrhoExportScene(context, uModelList, settings, sOptions):
 
         # Write individual prefabs
         if sOptions.doIndividualPrefab:
-            filename2 = os.path.join(objectsPath, uModel.name + os.path.extsep + "xml")
-
-            if not os.path.exists(filename2) or settings.fileOverwrite:
-                log.info( "Creating Prefab file {:s}".format(filename2) )
-                WriteIndividualPrefabs(uModel, sceneName, sOptions.doPhysics, filename2, settings.useStandardDirs)
-            else:
-                log.error( "File already exists {:s}".format(filename2) )
+            xml = IndividualPrefabXml(uScene, uSceneModel, sOptions)
+            filepath = GetFilepath(PathType.OBJECTS, uSceneModel.name, fOptions)
+            if CheckFilepath(filepath[0], fOptions):
+                log.info( "Creating prefab {:s}".format(filepath[1]) )
+                WriteXmlFile(xml, filepath[0], fOptions)
 
         # Merging objects equates to an individual export. And collective equates to individual, so we can skip collective
         if sOptions.mergeObjects and sOptions.doScenePrefab: 
-            WritePrefab(sceneFullFilename, sceneRoot, settings.fileOverwrite)
+            filepath = GetFilepath(PathType.SCENES, uScene.blenderSceneName, fOptions)
+            if CheckFilepath(filepath[0], fOptions):
+                log.info( "Creating scene prefab {:s}".format(filepath[1]) )
+                WriteXmlFile(sceneRoot, filepath[0], fOptions)
 
     # Write collective and scene prefab files
     if not sOptions.mergeObjects:
 
         if sOptions.doCollectivePrefab:
-            WritePrefab(sceneFilename, root, settings.fileOverwrite)
+            filepath = GetFilepath(PathType.OBJECTS, uScene.blenderSceneName, fOptions)
+            if CheckFilepath(filepath[0], fOptions):
+                log.info( "Creating collective prefab {:s}".format(filepath[1]) )
+                WriteXmlFile(root, filepath[0], fOptions)
 
         if sOptions.doScenePrefab:
-            WritePrefab(sceneFullFilename, sceneRoot, settings.fileOverwrite)
-
-
+            filepath = GetFilepath(PathType.SCENES, uScene.blenderSceneName, fOptions)
+            if CheckFilepath(filepath[0], fOptions):
+                log.info( "Creating scene prefab {:s}".format(filepath[1]) )
+                WriteXmlFile(sceneRoot, filepath[0], fOptions)

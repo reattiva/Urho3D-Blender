@@ -414,8 +414,16 @@ class UrhoMaterial:
         # Material is two sided
         self.twoSided = False
 
+    def getTextures(self):
+        return  (
+                    self.diffuseTexName,
+                    self.normalTexName,
+                    self.specularTexName,
+                    self.emissiveTexName
+                )
+
     def getTexturesNumber(self):
-        return 4;
+        return 4
 
     def getTextureName(self, index):
         if index == 0:
@@ -758,7 +766,7 @@ def UrhoWriteAnimation(animation, filename):
 
     fw.close()
 
-    
+'''
 def UrhoWriteMaterial(material, filename, useStandardDirs):
 
     texturesPath = ""
@@ -840,7 +848,7 @@ def UrhoWriteMaterialsList(materialFilenameList, filename, useStandardDirs):
         return
     file.write(content)
     file.close()
-
+'''
     
 # As described in Animation::Load, Animation::Save
 def UrhoWriteTriggers(triggersList, filename):
