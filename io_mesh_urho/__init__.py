@@ -631,7 +631,7 @@ class UrhoExportOperator(bpy.types.Operator):
     bl_label = "Export"
   
     def execute(self, context):
-        ExecuteUrhoExport(context)
+        ExecuteAddon(context)
         return {'FINISHED'}
  
     def invoke(self, context, event):
@@ -937,10 +937,6 @@ def selectVertices(context, objectName, indicesList):
 def ExecuteUrhoExport(context):
     global logList
 
-    startTime = time.time()
-    
-    print("----------------------Urho export start----------------------")
-    
     # Clear log list
     logList[:] = []
     
@@ -1026,8 +1022,7 @@ def ExecuteUrhoExport(context):
     
     if not settings.outputPath:
         log.error( "Output path is not set" )
-        ## !!FIXME
-        return
+        return False
 
     if tOptions.mergeObjects and not tOptions.globalOrigin:
         log.warning("Probably you should use Origin = Global")
@@ -1142,7 +1137,15 @@ def ExecuteUrhoExport(context):
     # Export scene and nodes
     if settings.prefabs:
         UrhoExportScene(context, uScene, sOptions, fOptions)
-    
+
+    return True
+
+
+def ExecuteAddon(context):
+
+    startTime = time.time()
+    print("----------------------Urho export start----------------------")    
+    ExecuteUrhoExport(context)
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     
     bpy.ops.urho.report('INVOKE_DEFAULT')
