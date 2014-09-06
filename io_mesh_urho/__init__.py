@@ -1077,7 +1077,7 @@ def ExecuteUrhoExport(context):
                 if CheckFilepath(filepath[0], fOptions):
                     uScene.AddFile(PathType.TRIGGERS, uAnimation.name, filepath[1])
                     log.info( "Creating triggers {:s}".format(filepath[1]) )
-                    UrhoWriteTriggers(uAnimation.triggers, filepath[0])
+                    UrhoWriteTriggers(uAnimation.triggers, filepath[0], fOptions)
                 
         if settings.textures:
             for uMaterial in uExportData.materials:

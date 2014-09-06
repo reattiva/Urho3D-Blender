@@ -4,15 +4,12 @@
 # Based on the Ogre Importer from the Urho3D project
 #
 
-# http://docs.python.org/2/library/struct.html
+from .utils import FloatToString, WriteXmlFile, BinaryFileWriter
 
 from mathutils import Vector, Matrix, Quaternion
 from math import cos, pi
 from xml.etree import ElementTree as ET
-from xml.dom import minidom
 import operator
-import struct
-import array
 import os
 
 import logging
@@ -461,84 +458,7 @@ class UrhoExportOptions:
     def __init__(self):
         self.splitSubMeshes = False
         self.useStrictLods = True
-                
 
-#--------------------
-# Binary writer
-#--------------------
-
-class BinaryFileWriter:
-
-    # We try to write the file with a single API call to avoid
-    # the Editor crashing while reading a not completed file.
-    # We set the buffer to 1Mb (if unspecified is 64Kb, and it is
-    # 8Kb with multiple file.write calls)
-
-    # Constructor.
-    def __init__(self):
-        self.filename = None
-        self.buffer = None
-    
-    # Open file stream.
-    def open(self, filename):
-        self.filename = filename
-        self.buffer = array.array('B')
-        return True
-
-    def close(self):
-        file = open(self.filename, "wb", 1024 * 1024)
-        self.buffer.tofile(file)
-        file.close()
-
-    # Writes an ASCII string without terminator
-    def writeAsciiStr(self, v):
-        self.buffer.extend(bytes(v, "ascii"))
-
-    # Writes a 32 bits unsigned int
-    def writeUInt(self, v):
-        self.buffer.extend(struct.pack("<I", v))
-
-    # Writes a 16 bits unsigned int
-    def writeUShort(self, v):
-        self.buffer.extend(struct.pack("<H", v))
-
-    # Writes one 8 bits unsigned byte
-    def writeUByte(self, v):
-        self.buffer.extend(struct.pack("<B", v))
-
-    # Writes four 32 bits floats .w .x .y .z
-    def writeQuaternion(self, v):
-        self.buffer.extend(struct.pack("<4f", v.w, v.x, v.y, v.z))
-
-    # Writes three 32 bits floats .x .y .z
-    def writeVector3(self, v):
-        self.buffer.extend(struct.pack("<3f", v.x, v.y, v.z))
-
-    # Writes a 32 bits float
-    def writeFloat(self, v):
-        self.buffer.extend(struct.pack("<f", v))
-
-#--------------------
-# XML formatter
-#--------------------
-
-def FloatToString(value):
-    return "{:g}".format(value)
-
-def Vector3ToString(vector):
-    return "{:g} {:g} {:g}".format(vector[0], vector[1], vector[2])
-
-def Vector4ToString(vector):
-    return "{:g} {:g} {:g} {:g}".format(vector[0], vector[1], vector[2], vector[3])
-
-def XmlToPrettyString(elem):
-    rough = ET.tostring(elem, 'utf-8')
-    reparsed = minidom.parseString(rough)
-    pretty = reparsed.toprettyxml(indent="\t")
-    i = pretty.rfind("?>")
-    if i >= 0:
-        pretty = pretty[i+2:]
-    return pretty.strip()
 
 #--------------------
 # Writers
@@ -766,92 +686,9 @@ def UrhoWriteAnimation(animation, filename):
 
     fw.close()
 
-'''
-def UrhoWriteMaterial(material, filename, useStandardDirs):
-
-    texturesPath = ""
-    if useStandardDirs:
-        texturesPath = "Textures/"
-        
-    materialElem = ET.Element('material')
-
-    #comment = ET.Comment("Material {:s} created from Blender".format(material.name))
-    #materialElem.append(comment)
-    
-    techniqueElem = ET.SubElement(materialElem, "technique")
-    techniqueElem.set("name", material.techniqueName + ".xml")
-
-    if material.diffuseTexName:
-        diffuseElem = ET.SubElement(materialElem, "texture")
-        diffuseElem.set("unit", "diffuse")
-        diffuseElem.set("name", texturesPath + material.diffuseTexName)
-
-    if material.normalTexName:
-        normalElem = ET.SubElement(materialElem, "texture")
-        normalElem.set("unit", "normal")
-        normalElem.set("name", texturesPath + material.normalTexName)
-        
-    if material.specularTexName:
-        specularElem = ET.SubElement(materialElem, "texture")
-        specularElem.set("unit", "specular")
-        specularElem.set("name", texturesPath + material.specularTexName)
-
-    if material.emissiveTexName:
-        emissiveElem = ET.SubElement(materialElem, "texture")
-        emissiveElem.set("unit", "emissive")
-        emissiveElem.set("name", texturesPath + material.emissiveTexName)
-
-    if material.diffuseColor:
-        diffuseColorElem = ET.SubElement(materialElem, "parameter")
-        diffuseColorElem.set("name", "MatDiffColor")
-        diffuseColorElem.set("value", Vector4ToString(material.diffuseColor) )
-
-    if material.specularColor:
-        specularElem = ET.SubElement(materialElem, "parameter")
-        specularElem.set("name", "MatSpecColor")
-        specularElem.set("value", Vector4ToString(material.specularColor) )
-
-    if material.emissiveColor:
-        emissiveElem = ET.SubElement(materialElem, "parameter")
-        emissiveElem.set("name", "MatEmissiveColor")
-        emissiveElem.set("value", Vector3ToString(material.emissiveColor) )
-
-    if material.twoSided:
-        cullElem = ET.SubElement(materialElem, "cull")
-        cullElem.set("value", "none")
-        shadowCullElem = ET.SubElement(materialElem, "shadowcull")
-        shadowCullElem.set("value", "none")
-    
-    try:
-        file = open(filename, "w")
-    except Exception as e:
-        log.error("Cannot open file {:s} {:s}".format(filename, e))
-        return
-    file.write(XmlToPrettyString(materialElem))
-    file.close()
-
-    
-def UrhoWriteMaterialsList(materialFilenameList, filename, useStandardDirs):
-    
-    materialsPath = ""
-    if useStandardDirs:
-        materialsPath = "Materials/"
-        
-    content = ""
-    for materialFilename in materialFilenameList:
-        content += materialsPath + materialFilename + "\n"
-
-    try:
-        file = open(filename, "w")
-    except Exception as e:
-        log.error("Cannot open file {:s} {:s}".format(filename, e))
-        return
-    file.write(content)
-    file.close()
-'''
     
 # As described in Animation::Load, Animation::Save
-def UrhoWriteTriggers(triggersList, filename):
+def UrhoWriteTriggers(triggersList, filename, fOptions):
     
     triggersElem = ET.Element('animation')
 
@@ -862,14 +699,8 @@ def UrhoWriteTriggers(triggersList, filename):
         # and XMLElement::GetVariant()
         triggerElem.set("type", "String")
         triggerElem.set("value", str(trigger.data))
-        
-    try:
-        file = open(filename, "w")
-    except Exception as e:
-        log.error("Cannot open file {:s} {:s}".format(filename, e))
-        return
-    file.write(XmlToPrettyString(triggersElem))
-    file.close()
+
+    WriteXmlFile(triggersElem, filename, fOptions)
         
         
 #---------------------------------------

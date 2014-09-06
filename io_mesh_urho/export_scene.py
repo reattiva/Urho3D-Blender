@@ -3,9 +3,10 @@
 # This script is licensed as public domain.
 #
 
-from .utils import PathType, GetFilepath, CheckFilepath
-from .export_urho import FloatToString, BinaryFileWriter, FloatToString, \
-                         Vector3ToString, Vector4ToString, XmlToPrettyString
+from .utils import PathType, GetFilepath, CheckFilepath, \
+                   FloatToString, Vector3ToString, Vector4ToString, \
+                   WriteXmlFile
+
 from xml.etree import ElementTree as ET
 import bpy
 import os
@@ -113,20 +114,6 @@ class UrhoScene:
 # Export materials
 #------------------------
 
-# Write XML to a text file
-def WriteXmlFile(xmlContent, filepath, fOptions):
-    try:
-        file = open(filepath, "w")
-    except Exception as e:
-        log.error("Cannot open file {:s} {:s}".format(filepath, e))
-        return
-    try:
-        file.write(XmlToPrettyString(xmlContent))
-    except Exception as e:
-        log.error("Cannot write to file {:s} {:s}".format(filepath, e))
-    file.close()
-
-
 def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
 
     materialElem = ET.Element('material')
@@ -182,13 +169,7 @@ def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
         shadowCullElem = ET.SubElement(materialElem, "shadowcull")
         shadowCullElem.set("value", "none")
 
-    try:
-        file = open(filepath, "w")
-    except Exception as e:
-        log.error("Cannot open file {:s} {:s}".format(filepath, e))
-        return
-    file.write(XmlToPrettyString(materialElem))
-    file.close()
+    WriteXmlFile(materialElem, filepath, fOptions)
 
 
 def UrhoWriteMaterialsList(uScene, uModel, filepath):
