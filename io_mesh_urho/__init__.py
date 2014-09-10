@@ -138,6 +138,35 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
             maxlen = 1024,
             subtype = "DIR_PATH")
 
+    modelsPath = StringProperty(
+            name = "Default Models subpath",
+            description = "Models subpath (relative to output)",
+            default = "Models")
+    animationsPath = StringProperty(
+            name = "Default Animations subpath",
+            description = "Animations subpath (relative to output)",
+            default = "Models")
+    materialsPath = StringProperty(
+            name = "Default Materials subpath",
+            description = "Materials subpath (relative to output)",
+            default = "Materials")
+    techniquesPath = StringProperty(
+            name = "Default Techniques subpath",
+            description = "Techniques subpath (relative to output)",
+            default = "")
+    texturesPath = StringProperty(
+            name = "Default Textures subpath",
+            description = "Textures subpath (relative to output)",
+            default = "Textures")
+    objectsPath = StringProperty(
+            name = "Default Objects subpath",
+            description = "Objects subpath (relative to output)",
+            default = "Objects")
+    scenesPath = StringProperty(
+            name = "Default Scenes subpath",
+            description = "Scenes subpath (relative to output)",
+            default = "Scenes")
+
     reportWidth = IntProperty(
             name = "Window width",
             description = "Width of the report window",
@@ -151,6 +180,13 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "outputPath")
+        layout.prop(self, "modelsPath")
+        layout.prop(self, "animationsPath")
+        layout.prop(self, "materialsPath")
+        layout.prop(self, "techniquesPath")
+        layout.prop(self, "texturesPath")
+        layout.prop(self, "objectsPath")
+        layout.prop(self, "scenesPath")
         row = layout.row()
         row.label("Report window:")
         row.prop(self, "reportWidth")
@@ -229,6 +265,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             self.outputPath = addonPrefs.outputPath
 
         self.minimize = False
+        self.showDirs = False
 
         self.useStandardDirs = True
         self.fileOverwrite = False
@@ -293,6 +330,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Minimize the export panel",
             default = False)
 
+    showDirs = BoolProperty(
+            name = "Show dirs",
+            description = "Show the dirs list",
+            default = False)
+
     # --- Output settings ---
     
     outputPath = StringProperty(
@@ -307,6 +349,28 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             name = "Use Urho standard folders",
             description = "Use Urho standard folders (Materials, Models, Textures ...)",
             default = True)
+
+    modelsPath = StringProperty(
+            name = "Models",
+            description = "Models subpath (relative to output)")
+    animationsPath = StringProperty(
+            name = "Animations",
+            description = "Animations subpath (relative to output)")
+    materialsPath = StringProperty(
+            name = "Materials",
+            description = "Materials subpath (relative to output)")
+    techniquesPath = StringProperty(
+            name = "Techniques",
+            description = "Techniques subpath (relative to output)")
+    texturesPath = StringProperty(
+            name = "Textures",
+            description = "Textures subpath (relative to output)")
+    objectsPath = StringProperty(
+            name = "Objects",
+            description = "Objects subpath (relative to output)")
+    scenesPath = StringProperty(
+            name = "Scenes",
+            description = "Scenes subpath (relative to output)")
 
     fileOverwrite = BoolProperty(
             name = "Files overwrite",
@@ -694,8 +758,20 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 
         box.label("Output folder:")
         box.prop(settings, "outputPath")
-        box.prop(settings, "useStandardDirs")
         box.prop(settings, "fileOverwrite")
+        row = box.row()
+        row.prop(settings, "useStandardDirs")
+        showDirsIcon = 'ZOOMOUT' if settings.showDirs else 'ZOOMIN'
+        row.prop(settings, "showDirs", text="", icon=showDirsIcon, toggle=False)
+        if settings.showDirs:
+            dbox = box.box()
+            dbox.prop(settings, "modelsPath")
+            dbox.prop(settings, "animationsPath")
+            dbox.prop(settings, "materialsPath")
+            dbox.prop(settings, "techniquesPath")
+            dbox.prop(settings, "texturesPath")
+            dbox.prop(settings, "objectsPath")
+            dbox.prop(settings, "scenesPath")
 
         row = layout.row()    
         row.label("Settings:")
@@ -859,7 +935,15 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 def PostLoad(dummy):
     addonPrefs = bpy.context.user_preferences.addons[__name__].preferences
     settings = bpy.context.scene.urho_exportsettings
-    if addonPrefs.outputPath:
+    if not settings.modelsPath and addonPrefs.modelsPath:
+        settings.modelsPath = addonPrefs.modelsPath
+        settings.animationsPath = addonPrefs.animationsPath
+        settings.materialsPath = addonPrefs.materialsPath
+        settings.techniquesPath = addonPrefs.techniquesPath
+        settings.texturesPath = addonPrefs.texturesPath
+        settings.objectsPath = addonPrefs.objectsPath
+        settings.scenesPath = addonPrefs.scenesPath
+    if not settings.modelsPath and addonPrefs.outputPath:
         settings.outputPath = addonPrefs.outputPath
 
 
@@ -1042,16 +1126,16 @@ def ExecuteUrhoExport(context):
     fOptions.useStandardDirs = settings.useStandardDirs
     fOptions.fileOverwrite = settings.fileOverwrite
     fOptions.paths[PathType.ROOT] = settings.outputPath
-    fOptions.paths[PathType.MODELS] = "Models"
-    fOptions.paths[PathType.ANIMATIONS] = "Models"
-    fOptions.paths[PathType.TRIGGERS] = fOptions.paths[PathType.ANIMATIONS]
-    fOptions.paths[PathType.MATERIALS] = "Materials"
-    fOptions.paths[PathType.TECHNIQUES] = ""
-    fOptions.paths[PathType.TEXTURES] = "Textures"
-    fOptions.paths[PathType.MATLIST] = "Models"
-    fOptions.paths[PathType.OBJECTS] = "Objects"
-    fOptions.paths[PathType.SCENES] = "Scenes"
-    
+    fOptions.paths[PathType.MODELS] = settings.modelsPath
+    fOptions.paths[PathType.ANIMATIONS] = settings.animationsPath
+    fOptions.paths[PathType.TRIGGERS] = settings.animationsPath
+    fOptions.paths[PathType.MATERIALS] = settings.materialsPath
+    fOptions.paths[PathType.TECHNIQUES] = settings.techniquesPath
+    fOptions.paths[PathType.TEXTURES] = settings.texturesPath
+    fOptions.paths[PathType.MATLIST] = settings.modelsPath
+    fOptions.paths[PathType.OBJECTS] = settings.objectsPath
+    fOptions.paths[PathType.SCENES] = settings.scenesPath
+
     if not settings.outputPath:
         log.error( "Output path is not set" )
         return False
