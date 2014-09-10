@@ -66,8 +66,11 @@ def GetFilepath(pathType, name, fOptions):
 
     # Create the full path if missing
     if not os.path.isdir(fullPath):
-        log.info( "Creating path {:s}".format(fullPath) )
-        os.makedirs(fullPath)
+        try:
+            os.makedirs(fullPath)
+            log.info( "Created path {:s}".format(fullPath) )
+        except Exception as e:
+            log.error("Cannot create path {:s} {:s}".format(fullPath, e))
 
     # Compose filename
     filename = name
@@ -173,8 +176,15 @@ class BinaryFileWriter:
         return True
 
     def close(self):
-        file = open(self.filename, "wb", 1024 * 1024)
-        self.buffer.tofile(file)
+        try:
+            file = open(self.filename, "wb", 1024 * 1024)
+        except Exception as e:
+            log.error("Cannot open file {:s} {:s}".format(self.filename, e))
+            return
+        try:
+            self.buffer.tofile(file)
+        except Exception as e:
+            log.error("Cannot write to file {:s} {:s}".format(self.filename, e))
         file.close()
 
     # Writes an ASCII string without terminator
