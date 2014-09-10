@@ -327,6 +327,7 @@ class TOptions:
         self.mergeNotMaterials = False
         self.useLods = False
         self.onlySelected = False
+        self.orientation = Quaternion()
         self.scale = 1.0
         self.globalOrigin = True
         self.bonesGlobalOrigin = False  #useless
@@ -967,11 +968,14 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
         if parent:
             boneMatrix = parent.matrix_local.inverted() * boneMatrix
         else:
+            boneMatrix = originMatrix * boneMatrix
+            if tOptions.orientation:
+                boneMatrix = tOptions.orientation.to_matrix().to_4x4() * boneMatrix
             # Normally we don't have to worry that Blender is Z up and we want
             # Y up because we use relative trasformations between bones. However
             # the parent bone is relative to the armature so we need to convert
             # Z up to Y up by rotating its matrix by -90° on X
-            boneMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) * originMatrix * boneMatrix
+            boneMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) * boneMatrix
 
         if tOptions.scale != 1.0:
             boneMatrix.translation *= tOptions.scale
@@ -998,6 +1002,8 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
         # - swap row 1 with row 2
         # - negate column 2
         ml = bone.matrix_local.copy()
+        if tOptions.orientation:
+            ml = tOptions.orientation.to_matrix().to_4x4() * ml
         if tOptions.scale != 1.0:
             ml.translation *= tOptions.scale
         (ml[1][:], ml[2][:]) = (ml[2][:], ml[1][:])
@@ -1331,7 +1337,12 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
         posMatrix = meshObj.matrix_world
         # Use the inverse transpose to rotate normals without scaling (math trick)
         normalMatrix = meshObj.matrix_world.inverted().transposed()
-    
+
+    # Apply custom rotation
+    if tOptions.orientation:
+        posMatrix = tOptions.orientation.to_matrix().to_4x4() * posMatrix
+        normalMatrix = tOptions.orientation.to_matrix().to_4x4() * normalMatrix
+
     # Apply custom scaling last
     if tOptions.scale != 1.0:
         posMatrix = Matrix.Scale(tOptions.scale, 4) * posMatrix 
@@ -1596,7 +1607,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
             # Set Vertex bones weights
             if tOptions.doGeometryWei:
                 weights = []
-                # Scan all the vertex group associated to the vertex, type: VertexGroupElement(bpy_struct)
+                # Scan all the vertex groups associated to the vertex, type: VertexGroupElement(bpy_struct)
                 for g in vertex.groups:
                     # The group name should be the bone name, but it can also be an user made vertex group
                     try:

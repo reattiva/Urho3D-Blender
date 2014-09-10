@@ -58,6 +58,8 @@ import logging
 import bpy
 from bpy.props import StringProperty, BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.app.handlers import persistent
+from mathutils import Quaternion
+from math import radians
 
 #--------------------
 # Loggers
@@ -385,6 +387,17 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             items=(('ALL', "All", "all the objects in the scene"),
                    ('ONLY_SELECTED', "Only selected", "only the selected objects in visible layers")),
             default='ONLY_SELECTED')
+
+    orientation = EnumProperty(
+            name = "Orientation",
+            description = "Orientation of the model",
+            items = (('X_PLUS', "Forward:+X Up:+Z", ""),
+                    ('X_MINUS', "Forward:--X Up:+Z", ""),
+                    ('Y_PLUS',  "Forward:+Y Up:+Z (*)", ""),
+                    ('Y_MINUS', "Forward:--Y Up:+Z", ""),
+                    ('Z_PLUS',  "Forward:+Z Up:+Y", ""),
+                    ('Z_MINUS', "Forward:--Z Up:--Y", "")),
+            default = 'X_PLUS')
 
     scale = FloatProperty(
             name = "Scale", 
@@ -787,6 +800,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row.label("Origin:")
         row.prop(settings, "origin", expand=True)
 
+        box.prop(settings, "orientation")
         box.prop(settings, "scale")
         
         box.prop(settings, "modifiers")
@@ -1116,7 +1130,19 @@ def ExecuteUrhoExport(context):
     tOptions.doMaterials = settings.materials or settings.textures
     tOptions.bonesGlobalOrigin = settings.bonesGlobalOrigin
     tOptions.actionsGlobalOrigin = settings.actionsGlobalOrigin
-    
+
+    tOptions.orientation = None # ='Y_PLUS'
+    if settings.orientation == 'X_PLUS':
+        tOptions.orientation = Quaternion((0.0,0.0,1.0), radians(90.0))
+    elif settings.orientation == 'X_MINUS':
+        tOptions.orientation = Quaternion((0.0,0.0,1.0), radians(-90.0))
+    elif settings.orientation == 'Y_MINUS':
+        tOptions.orientation = Quaternion((0.0,0.0,1.0), radians(180.0))
+    elif settings.orientation == 'Z_PLUS':
+        tOptions.orientation = Quaternion((1.0,0.0,0.0), radians(-90.0)) * Quaternion((0.0,0.0,1.0), radians(180.0))
+    elif settings.orientation == 'Z_MINUS':
+        tOptions.orientation = Quaternion((1.0,0.0,0.0), radians(-90.0))
+
     sOptions.mergeObjects = settings.merge
     sOptions.doIndividualPrefab = settings.individualPrefab
     sOptions.doCollectivePrefab = settings.collectivePrefab
