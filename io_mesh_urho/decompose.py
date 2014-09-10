@@ -792,11 +792,40 @@ def RestorePosePosition(armatureObj, savedValue):
         return
     armatureObj.data.pose_position = savedValue
 
+# -- Rigify -- 
+# In a Rigify system there are ORG bones and DEF bones. The DEF bones causes the mesh deformation
+# and from their corresponding vertex groups we'll get all the vertices weights. The ORG bones 
+# are used to reconstruct the DEF bones hierarchy (they have deform off).
+# Normally you can find the DEF bones in the third to last armature layer and the ORG bones in 
+# last layer.
+# The association between ORG and DEF bones is done by the names with a pair "ORG-<name>" and
+# "DEF-<name>" (e.g. ORG-SPINE and DEF-spine). Sometimes a ORG bone covers multiple DEF bones,
+# in this case the DEF bones have name "DEF-<name>.<number>" (e.g. ORG-thigh.L, DEF-thigh.L.01,
+# DEF-thigh.L.02) the lowest number is the root of the group and it is linked to the ORG bone.
+# -- Derigify --
+# We need a list of deform bones ('defbones') and their hierarchy ('defparent', 'defchildren').
+# We start by searching all the DEF and ORG bones. Then we try to associate the DEF bones to
+# their corresponding ORG bones, we need it in both ways: DEF to ORG and ORG to DEF.
+# An ORG bone can be associated with multiple DEF bones, in this case the DEF bones have a number
+# in their name. We order this list of DEF bones by name, so we can get their correct structure,
+# the lowest number (01) is the root then follows their children.
+# Now we can reconstruct the hierarchy. For each DEF bone X we get the list of DEF bones of the
+# associate ORG bone Y. X will be in the list, if it is the first (it name can be "DEF-<name>" 
+# or "DEF-<name>.01") we get the parent P of the ORG bone Y, we get the list of DEF bones of P,
+# we set the last bone in this list (lower child) as the parent of X. If X is not the first we
+# set the previous DEF bone in the list as the parent of X ('defparent').
+# Now for each bone X with a parent Y, we set X as a child of Y ('defchildren').
+# Finally for each DEF bone with no parent (root DEF bone) we go down to all its hierarchy and
+# for each bone we traverse we store the tuple 'bone, parent bone' in the list 'boneList'.
+# -- Note --
+# To make it worse from some version of Rigify (<=0.4) the name convention was changed from
+# DEF/ORG-<name>.L/R.<number> to DEF/ORG-<name>.<number>.L/R
+
 def DerigifyArmature(armature):
 
-    # Map {ORG bone name: Blender ORG bone} 
+    # Map {ORG bone name: Blender ORG bone}
     orgbones = {}
-    # Map {DEF bone name: Blender DEF bone} 
+    # Map {DEF bone name: Blender DEF bone}
     defbones = {}
     # Map {ORG bone name: list of DEF bones names}
     org2defs = {}
@@ -804,19 +833,28 @@ def DerigifyArmature(armature):
     def2org = {}
     # Map {DEF bone name: list of children DEF bones}
     defchildren = {}
-    # Map {DEF bone name: its parent DEF bone name}    
+    # Map {DEF bone name: its parent DEF bone name}
     defparent = {}
-        
+    # List of names of bad DEF bones
+    defbad = []
+
+    # Experimental extended search for the Sintel model (does not work)
+    extended = False
+    # Flag for bad Rigify rig
+    badrig = False
+
     # Scan the armature and collect ORG bones and DEF bones in the maps by their names,
     # we remove ORG- or DEF- from names
     for bone in armature.bones.values():
         if bone.name.startswith('ORG-'):
             orgbones[bone.name[4:]] = bone
             org2defs[bone.name[4:]] = []
-        elif bone.name.startswith('DEF-'):
+        elif bone.name.startswith('DEF-') and bone.use_deform:
             defbones[bone.name[4:]] = bone
             defchildren[bone.name[4:]] = []
 
+    # Populate the org2defs with all the DEF bones corresponding to a ORG bone and def2org 
+    # with the unique ORG bone corresponding to a DEF bone.
     # For each DEF bone in the map get its name and Blender bone
     for name, bone in defbones.items():
         orgname = name
@@ -825,20 +863,55 @@ def DerigifyArmature(armature):
         # If this ORG bone does not exist, then the DEF bone name could be DEF-<name>.<number>,
         # so we remove .<number> and search for the ORG bone again
         if not orgbone:
-            splitname = name.rfind('.')
-            if splitname >= 0 and name[splitname+1:].isdigit():
-                orgname = name[:splitname]
+            # Search with new format: <name>.<number>.L/R (e.g. "DEF-thigh.02.L")
+            prog = re.compile("^(.+)\.\d+(\.[L,R])$")
+            mo = prog.match(name)
+            # Search with old format: <name>.L/R.<number> (e.g. "DEF-thigh.L.02")
+            if not mo:
+                prog = re.compile("^(.+)(\.[L,R])\.\d+$")
+                mo = prog.match(name)
+            # If the format is correct try to find the ORG bone
+            if mo:
+                orgname = mo.group(1) + mo.group(2)
                 orgbone = orgbones.get(orgname)
+            # Still no ORG bone, is it a chain of DEF bones till a ORG bone ?
+            if not orgbone and mo and extended:
+                pbone = bone.parent
+                while pbone:
+                    # If the parent is a ORG bone, we have found it
+                    if pbone.name.startswith('ORG-'):
+                        orgname = pbone.name[4:]
+                        orgbone = orgbones.get(orgname)
+                        break
+                    # Fail if the parent is not a DEF bone
+                    if not pbone.name.startswith('DEF-'):
+                        break
+                    # Fail if the parent has a different format
+                    pmo = prog.match(pbone.name[4:])
+                    if not pmo or pmo.groups() != mo.groups():
+                        break
+                    pbone = pbone.parent
+        # If we cannot find a ORG bone for the DEF bone, this is a bad rig
+        if not orgbone:
+            defbad.append(name)
+            badrig = True
+            continue
         # Map the ORG name (can be None) to the DEF name (one to many)
         org2defs[orgname].append(name)
         # Map the DEF name to the ORG name (can be None) (one to one)
         def2org[name] = orgname
 
+    # Delete bad DEF bones
+    if defbad:
+        log.warning("Bad DEF bones skipped: {:s}".format( ", ".join(defbad) ))
+        for name in defbad:
+            del defbones[name]
+
     # Sort DEF bones names in the ORG to DEF map, so we get: <name>.0, <name>.1, <name>.2 ...
     for defs in org2defs.values():
         defs.sort()
 
-    # For each DEF bone in the map get its name and Blender bone
+    # Populate the parent map of each DEF bone
     for name, bone in defbones.items():
         # Get the relative ORG bone name (can be None)
         orgname = def2org[name]
@@ -853,19 +926,35 @@ def DerigifyArmature(armature):
             if i == 0:
                 orgparent = orgbone.parent
                 # If the ORG parent bone exists and it is an ORG bone
-                if orgparent and orgparent.name.startswith('ORG-'):
+                while orgparent and orgparent.name.startswith('ORG-'):
                     orgpname = orgparent.name[4:]
                     # Map this DEF bone to the last DEF bone of the ORG parent bone
-                    defparent[name] = org2defs[orgpname][-1]
+                    pdefs = org2defs[orgpname]
+                    if pdefs:
+                        defparent[name] = pdefs[-1]
+                        break
+                    # If the ORG has no DEF bones we can try with its parent
+                    if not extended:
+                        badrig = True
+                        break
+                    orgparent = orgparent.parent
             else:
                 # Map this DEF bone to the previous DEF bone in the list (it has a lower number)
                 defparent[name] = defs[i-1]
-        # If this DEF bone has a parent, append it as a children of the parent
+
+    # Populate the children list of each DEF bone
+    for name in defbones.keys():
+        # If this DEF bone has a parent, append it as a child of the parent
         if name in defparent:
             defchildren[defparent[name]].append(name)
 
-    boneList = []
+    bonesList = []
     
+    # Delete bad DEF bones
+    if defbad:
+        log.error("Incompatible Rigify rig")
+        ##return bonesList
+
     # Recursively add children
     def Traverse(boneName):
         # Get the Blender bone
@@ -880,12 +969,14 @@ def DerigifyArmature(armature):
         for childName in defchildren[boneName]:
             Traverse(childName)            
     
+    log.info("Derigify found {:d} DEF bones".format(len(defbones)) )
+
     # Start from bones with no parent (root bones)
     for boneName in defbones:
         if boneName not in defparent: 
             Traverse(boneName)    
                 
-    return boneList
+    return bonesList
 
 # How to read a skeleton: 
 # start from the root bone, move it of bindPosition in the armature space
