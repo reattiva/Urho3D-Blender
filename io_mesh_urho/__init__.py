@@ -227,7 +227,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         addonPrefs = context.user_preferences.addons[__name__].preferences
         if not self.outputPath:
             self.outputPath = addonPrefs.outputPath
-        
+
+        self.minimize = False
+
         self.useStandardDirs = True
         self.fileOverwrite = False
 
@@ -285,6 +287,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     # --- Accessory ---
 
     updatingProperties = BoolProperty(default = False)
+
+    minimize = BoolProperty(
+            name = "Minimize",
+            description = "Minimize the export panel",
+            default = False)
 
     # --- Output settings ---
     
@@ -672,11 +679,15 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 
         row = layout.row()
         #row=layout.row(align=True)
+        minimizeIcon = 'ZOOMIN' if settings.minimize else 'ZOOMOUT'
+        row.prop(settings, "minimize", text="", icon=minimizeIcon, toggle=False)
         row.operator("urho.export", icon='EXPORT')
         #split = layout.split(percentage=0.1)
         if sys.platform.startswith('win'):
             row.operator("urho.toggleconsole", text="", icon='CONSOLE')
         row.operator("urho.report", text="", icon='TEXT')
+        if settings.minimize:
+            return
 
         layout.label("Output:")
         box = layout.box()      
