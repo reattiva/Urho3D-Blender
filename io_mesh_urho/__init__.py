@@ -622,7 +622,23 @@ class UrhoReportDialog(bpy.types.Operator):
             else:
                 lineicon = 'TEXT'
             layout.label(text = lines[1], icon = lineicon)
-            
+
+
+# Toggle console button (Windows only)
+class UrhoToggleConsoleOperator(bpy.types.Operator):
+    """ Toggle system console """
+
+    bl_idname = "urho.toggleconsole"
+    bl_label = "Toggle console"
+
+    def execute(self, context):
+        bpy.ops.wm.console_toggle()
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        return self.execute(context)
+
+
 # Export button
 class UrhoExportOperator(bpy.types.Operator):
     """ Start exporting """
@@ -636,7 +652,8 @@ class UrhoExportOperator(bpy.types.Operator):
  
     def invoke(self, context, event):
         return self.execute(context)
-    
+
+
 # The export panel, here we draw the panel using properties we have created earlier
 class UrhoExportRenderPanel(bpy.types.Panel):
     
@@ -657,6 +674,8 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         #row=layout.row(align=True)
         row.operator("urho.export", icon='EXPORT')
         #split = layout.split(percentage=0.1)
+        if sys.platform.startswith('win'):
+            row.operator("urho.toggleconsole", text="", icon='CONSOLE')
         row.operator("urho.report", text="", icon='TEXT')
 
         layout.label("Output:")
@@ -846,7 +865,8 @@ def register():
         
     bpy.utils.register_class(UrhoAddonPreferences)
     bpy.utils.register_class(UrhoExportSettings)
-    bpy.utils.register_class(UrhoExportOperator) 
+    bpy.utils.register_class(UrhoExportOperator)
+    bpy.utils.register_class(UrhoToggleConsoleOperator)
     bpy.utils.register_class(UrhoExportResetOperator) 
     bpy.utils.register_class(UrhoExportRenderPanel)
     bpy.utils.register_class(UrhoReportDialog)
@@ -874,6 +894,7 @@ def unregister():
     bpy.utils.unregister_class(UrhoAddonPreferences)
     bpy.utils.unregister_class(UrhoExportSettings)
     bpy.utils.unregister_class(UrhoExportOperator) 
+    bpy.utils.unregister_class(UrhoToggleConsoleOperator)
     bpy.utils.unregister_class(UrhoExportResetOperator) 
     bpy.utils.unregister_class(UrhoExportRenderPanel)
     bpy.utils.unregister_class(UrhoReportDialog)
