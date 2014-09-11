@@ -382,14 +382,14 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default='ONLY_SELECTED')
 
     orientation = EnumProperty(
-            name = "Orientation",
-            description = "Orientation of the model",
-            items = (('X_PLUS', "Forward:+X Up:+Z", ""),
-                    ('X_MINUS', "Forward:--X Up:+Z", ""),
-                    ('Y_PLUS',  "Forward:+Y Up:+Z (*)", ""),
-                    ('Y_MINUS', "Forward:--Y Up:+Z", ""),
-                    ('Z_PLUS',  "Forward:+Z Up:+Y", ""),
-                    ('Z_MINUS', "Forward:--Z Up:--Y", "")),
+            name = "Front view",
+            description = "Front view of the model",
+            items = (('X_MINUS', "Left (--X +Z)", ""),
+                     ('X_PLUS',  "Right (+X +Z)", ""),
+                     ('Y_MINUS', "Front (--Y +Z)", ""),
+                     ('Y_PLUS',  "Back (+Y +Z) *", ""),
+                     ('Z_MINUS', "Bottom (--Z --Y)", ""),
+                     ('Z_PLUS',  "Top (+Z +Y)", "")),
             default = 'X_PLUS')
 
     scale = FloatProperty(
@@ -1134,7 +1134,7 @@ def ExecuteUrhoExport(context):
     elif settings.orientation == 'Z_PLUS':
         tOptions.orientation = Quaternion((1.0,0.0,0.0), radians(-90.0)) * Quaternion((0.0,0.0,1.0), radians(180.0))
     elif settings.orientation == 'Z_MINUS':
-        tOptions.orientation = Quaternion((1.0,0.0,0.0), radians(-90.0))
+        tOptions.orientation = Quaternion((1.0,0.0,0.0), radians(90.0)) * Quaternion((0.0,0.0,1.0), radians(180.0))
 
     sOptions.mergeObjects = settings.merge
     sOptions.doIndividualPrefab = settings.individualPrefab
