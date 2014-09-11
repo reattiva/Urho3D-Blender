@@ -231,10 +231,6 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Morph tangent needs normal
         if not self.morphNor:
             self.morphTan = False
-        # Derigify and Only deform or Only Visible are incompatible
-        if self.derigify:
-            self.onlyDeformBones = False
-            self.onlyVisibleBones = False
         # Select errors and merge are incompatible
         if self.selectErrors:
             self.merge = False
@@ -250,9 +246,6 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         if self.updatingProperties:
             return
         self.updatingProperties = True
-        # Derigify and Only deform or Only Visible are incompatible
-        if self.onlyDeformBones or self.onlyVisibleBones:
-            self.derigify = False
         # Select errors and merge are incompatible
         if self.merge:
             self.selectErrors = False

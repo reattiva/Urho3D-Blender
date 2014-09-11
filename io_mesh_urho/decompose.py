@@ -796,8 +796,8 @@ def RestorePosePosition(armatureObj, savedValue):
 # In a Rigify system there are ORG bones and DEF bones. The DEF bones causes the mesh deformation
 # and from their corresponding vertex groups we'll get all the vertices weights. The ORG bones 
 # are used to reconstruct the DEF bones hierarchy (they have deform off).
-# Normally you can find the DEF bones in the third to last armature layer and the ORG bones in 
-# last layer.
+# Normally you can find the DEF bones in the third to last armature layer (29) and the ORG bones 
+# in last layer (31).
 # The association between ORG and DEF bones is done by the names with a pair "ORG-<name>" and
 # "DEF-<name>" (e.g. ORG-SPINE and DEF-spine). Sometimes a ORG bone covers multiple DEF bones,
 # in this case the DEF bones have name "DEF-<name>.<number>" (e.g. ORG-thigh.L, DEF-thigh.L.01,
@@ -821,7 +821,7 @@ def RestorePosePosition(armatureObj, savedValue):
 # To make it worse from some version of Rigify (<=0.4) the name convention was changed from
 # DEF/ORG-<name>.L/R.<number> to DEF/ORG-<name>.<number>.L/R
 
-def DerigifyArmature(armature):
+def DerigifyArmature(armature, tOptions):
 
     # Map {ORG bone name: Blender ORG bone}
     orgbones = {}
@@ -836,7 +836,7 @@ def DerigifyArmature(armature):
     # Map {DEF bone name: its parent DEF bone name}
     defparent = {}
     # List of names of bad DEF bones
-    defbad = []
+    badbones = []
 
     # Experimental extended search for the Sintel model (does not work)
     extended = False
@@ -849,10 +849,14 @@ def DerigifyArmature(armature):
         if bone.name.startswith('ORG-'):
             orgbones[bone.name[4:]] = bone
             org2defs[bone.name[4:]] = []
-        elif bone.name.startswith('DEF-') and bone.use_deform:
+        elif bone.name.startswith('DEF-'):
+            if tOptions.doOnlyVisibleBones and not any(al and bl for al,bl in zip(armature.layers, bone.layers)):
+                continue
+            if tOptions.doOnlyDeformBones and not bone.use_deform:
+                continue
             defbones[bone.name[4:]] = bone
             defchildren[bone.name[4:]] = []
-
+    
     # Populate the org2defs with all the DEF bones corresponding to a ORG bone and def2org 
     # with the unique ORG bone corresponding to a DEF bone.
     # For each DEF bone in the map get its name and Blender bone
@@ -893,7 +897,7 @@ def DerigifyArmature(armature):
                     pbone = pbone.parent
         # If we cannot find a ORG bone for the DEF bone, this is a bad rig
         if not orgbone:
-            defbad.append(name)
+            badbones.append(name)
             badrig = True
             continue
         # Map the ORG name (can be None) to the DEF name (one to many)
@@ -902,10 +906,11 @@ def DerigifyArmature(armature):
         def2org[name] = orgname
 
     # Delete bad DEF bones
-    if defbad:
-        log.warning("Bad DEF bones skipped: {:s}".format( ", ".join(defbad) ))
-        for name in defbad:
+    if badbones:
+        log.warning("Bad DEF bones with no ORG skipped: {:s}".format( ", ".join(badbones) ))
+        for name in badbones:
             del defbones[name]
+        badbones.clear()
 
     # Sort DEF bones names in the ORG to DEF map, so we get: <name>.0, <name>.1, <name>.2 ...
     for defs in org2defs.values():
@@ -935,6 +940,7 @@ def DerigifyArmature(armature):
                         break
                     # If the ORG has no DEF bones we can try with its parent
                     if not extended:
+                        badbones.append(orgbone.parent.name)
                         badrig = True
                         break
                     orgparent = orgparent.parent
@@ -948,11 +954,16 @@ def DerigifyArmature(armature):
         if name in defparent:
             defchildren[defparent[name]].append(name)
 
+    # List bad ORG bones
+    if badbones:
+        log.warning("Bad ORG bones with no DEF children: {:s}".format( ", ".join(badbones) ))
+        badbones.clear()
+        
     bonesList = []
     
-    # Delete bad DEF bones
-    if defbad:
-        log.error("Incompatible Rigify rig")
+    # Warning for not standard rig
+    if badrig:
+        log.warning("Incompatible Rigify rig")
         ##return bonesList
 
     # Recursively add children
@@ -1026,7 +1037,7 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
     # Get a list of bones
     if tOptions.derigifyArmature:
         # from a Rigify armature
-        bonesList = DerigifyArmature(armature)
+        bonesList = DerigifyArmature(armature, tOptions)
     else:
         # from a standard armature
         bonesList = []
