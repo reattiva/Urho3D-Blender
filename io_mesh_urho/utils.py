@@ -18,16 +18,16 @@ log = logging.getLogger("ExportLogger")
 def enum(**enums):
     return type('Enum', (), enums)
 PathType = enum(
-    ROOT        = "ROOT",
-    MODELS      = "MODE",
-    ANIMATIONS  = "ANIM",
-    TRIGGERS    = "TRIG",
-    MATERIALS   = "MATE",
-    TECHNIQUES  = "TECH",
-    TEXTURES    = "TEXT",
-    MATLIST     = "MATL",
-    OBJECTS     = "OBJE",
-    SCENES      = "SCEN")
+    ROOT        = "ROOT-",
+    MODELS      = "MODE-",
+    ANIMATIONS  = "ANIM-",
+    TRIGGERS    = "TRIG-",
+    MATERIALS   = "MATE-",
+    TECHNIQUES  = "TECH-",
+    TEXTURES    = "TEXT-",
+    MATLIST     = "MATL-",
+    OBJECTS     = "OBJE-",
+    SCENES      = "SCEN-")
 
 # Options for file utils
 class FOptions:
