@@ -9,6 +9,7 @@ from .utils import FloatToString, WriteXmlFile, BinaryFileWriter
 from mathutils import Vector, Matrix, Quaternion
 from math import cos, pi
 from xml.etree import ElementTree as ET
+from collections import defaultdict
 import operator
 import os
 
@@ -965,8 +966,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
             # then let's hope our geometry uses only a subset of the total bones within the limit.
             # If this is true then we can remap the original bone index, which can be over the 
             # limit, to a local, in this geometry, bone index within the limit.
-            if (len(uModel.bones) > MAX_SKIN_MATRICES and 
-               (vertexBuffer.elementMask & ELEMENT_BLEND) == ELEMENT_BLEND):
+            if len(uModel.bones) > MAX_SKIN_MATRICES and (vertexBuffer.elementMask & ELEMENT_BLEND) == ELEMENT_BLEND:
+                discardedBones = defaultdict(float)
                 # For each vertex in the buffer
                 for vertex in vertexBuffer.vertices:
                     for i, (boneIndex, weight) in enumerate(vertex.weights):
@@ -979,11 +980,17 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                             if newBoneIndex < MAX_SKIN_MATRICES:
                                 uGeometry.boneMap.append(boneIndex)
                             else:
-                                log.error("Too many bones in object {:s} geometry {:d}.".format(uModel.name, i))
+                                boneName = uModel.bones[boneIndex].name
+                                discardedBones[boneName] += weight
                                 newBoneIndex = 0
                                 weight = 0.0
                         # Change from the global bone index to the local bone index
                         vertex.weights[i] = (newBoneIndex, weight)
+                if discardedBones:
+                    text = "Too many bones (+{:d}) in object {:s}: ".format(len(discardedBones), uModel.name)
+                    for boneName in sorted(discardedBones, key=discardedBones.get, reverse=False):
+                        text += " {:s}={:.2f}".format(boneName, discardedBones[boneName])
+                    log.error(text)
 
     if tData.geometriesList and uModel.boundingBox.min is None:
         uModel.boundingBox.min = Vector((0.0, 0.0, 0.0))
