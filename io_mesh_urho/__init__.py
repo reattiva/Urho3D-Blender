@@ -262,7 +262,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.minimize = False
         self.showDirs = False
 
-        self.useStandardDirs = True
+        self.useSubDirs = True
         self.fileOverwrite = False
 
         self.source = 'ONLY_SELECTED'
@@ -340,9 +340,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             subtype = "DIR_PATH",
             update = update_func)   
 
-    useStandardDirs = BoolProperty(
-            name = "Use Urho standard folders",
-            description = "Use Urho standard folders (Materials, Models, Textures ...)",
+    useSubDirs = BoolProperty(
+            name = "Use sub folders",
+            description = "Use sub folders inside the output folder (Materials, Models, Textures ...)",
             default = True)
 
     modelsPath = StringProperty(
@@ -766,7 +766,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         box.prop(settings, "outputPath")
         box.prop(settings, "fileOverwrite")
         row = box.row()
-        row.prop(settings, "useStandardDirs")
+        row.prop(settings, "useSubDirs")
         showDirsIcon = 'ZOOMOUT' if settings.showDirs else 'ZOOMIN'
         row.prop(settings, "showDirs", text="", icon=showDirsIcon, toggle=False)
         if settings.showDirs:
@@ -1142,7 +1142,7 @@ def ExecuteUrhoExport(context):
     sOptions.doScenePrefab = settings.scenePrefab
     sOptions.doPhysics = settings.physics
 
-    fOptions.useStandardDirs = settings.useStandardDirs
+    fOptions.useSubDirs = settings.useSubDirs
     fOptions.fileOverwrite = settings.fileOverwrite
     fOptions.paths[PathType.ROOT] = settings.outputPath
     fOptions.paths[PathType.MODELS] = settings.modelsPath

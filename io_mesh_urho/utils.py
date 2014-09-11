@@ -32,7 +32,7 @@ PathType = enum(
 # Options for file utils
 class FOptions:
     def __init__(self):
-        self.useStandardDirs = True
+        self.useSubDirs = True
         self.fileOverwrite = False
         self.paths = {}
         self.exts = {
@@ -61,7 +61,7 @@ def GetFilepath(pathType, name, fOptions):
 
     # Append the relative path to get the full path
     fullPath = rootPath
-    if fOptions.useStandardDirs:
+    if fOptions.useSubDirs:
         fullPath = os.path.join(fullPath, fOptions.paths[pathType])
 
     # Create the full path if missing
