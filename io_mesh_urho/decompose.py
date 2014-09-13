@@ -411,7 +411,7 @@ def GenerateTangents(tLodLevels, tVertexList, invalidUvIndices):
             vertex.bitangent = Vector((0.0, 0.0, 0.0))
 
     if tangentOverwritten:
-        log.warning("Overwriting {:d} tangents").format(tangentOverwritten)
+        log.warning("Overwriting {:d} tangents".format(tangentOverwritten))
 
     # Calculate tangent and bitangent
     invalidUV = False
