@@ -2115,13 +2115,15 @@ def Scan(context, tDataList, errorsMem, tOptions):
                         break
             # Decompose armature and animations
             if armatureObj:
+                savedValue = None
                 if not tData.bonesMap or not tOptions.mergeObjects:
                     savedValue = SetRestPosePosition(context, armatureObj)
                     DecomposeArmature(scene, armatureObj, obj, tData, tOptions)
                 if tOptions.doAnimations and (not tData.animationsList or not tOptions.mergeObjects):
                     armatureObj.data.pose_position = 'POSE'
                     DecomposeActions(scene, armatureObj, tData, tOptions)
-                RestorePosePosition(armatureObj, savedValue)
+                if savedValue:
+                    RestorePosePosition(armatureObj, savedValue)
             else:
                 log.warning("Object {:s} has no armature".format(obj.name) )
 
