@@ -12,6 +12,7 @@ from xml.etree import ElementTree as ET
 from collections import defaultdict
 import operator
 import os
+import random
 
 import logging
 log = logging.getLogger("ExportLogger")
@@ -185,8 +186,10 @@ class UrhoVertex:
             uVertexBuffer.elementMask = mask
         elif uVertexBuffer.elementMask != mask:
             oldMask = uVertexBuffer.elementMask
-            uVertexBuffer.elementMask &= mask
-            raise MaskError("{:04X} AND {:04X} = {:04X}".format(oldMask, mask, uVertexBuffer.elementMask))
+            # Update vertex buffer mask only if mask has the same and more bits
+            if (uVertexBuffer.elementMask & mask) == uVertexBuffer.elementMask:
+                uVertexBuffer.elementMask = mask
+            raise MaskError("{:04X} vs {:04X}".format(mask, oldMask))
     
     # used by the function index() of lists
     def __eq__(self, other):
@@ -703,7 +706,28 @@ def UrhoWriteTriggers(triggersList, filename, fOptions):
 
     WriteXmlFile(triggersElem, filename, fOptions)
         
-        
+
+#--------------------
+# Utils
+#--------------------
+
+# Search for the most complete element mask
+def GetMaxElementMask(indices, vertices):
+    vertexBuffer = UrhoVertexBuffer()
+    maxElementMask = 0
+    maxElementMaskCount = 0
+    for vertexIndex in indices:
+        vertexBuffer.elementMask = None
+        vertex = vertices[vertexIndex]
+        UrhoVertex(vertex, vertexBuffer)
+        count = bin(vertexBuffer.elementMask).count("1")
+        if maxElementMaskCount < count:
+            maxElementMaskCount = count
+            maxElementMask = vertexBuffer.elementMask
+    if maxElementMask:
+        return maxElementMask
+    return None
+
 #---------------------------------------
 
 # NOTE: only different geometries use different buffers
@@ -729,19 +753,7 @@ def UrhoWriteTriggers(triggersList, filename, fOptions):
 # Urho exporter
 #--------------------
 
-def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
-
-    try:
-        errorsIndices = errorsDict["incompatible element mask"]
-    except KeyError:
-        errorsIndices = set()
-        errorsDict["incompatible element mask"] = errorsIndices
-
-    try:
-        errorsMorphIndices = errorsDict["incompatible morph element mask"]
-    except KeyError:
-        errorsMorphIndices = set()
-        errorsDict["incompatible morph element mask"] = errorsMorphIndices
+def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
 
     uModel = UrhoModel()
     uModel.name = tData.objectName
@@ -848,7 +860,13 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
             
             # Errors helpers
             warningNewVertices = False
-
+            
+            # Try to guess the most complete element mask
+            randomIndices = random.sample(tLodLevel.indexSet, min(30, len(tLodLevel.indexSet)) )
+            guessedElementMask = GetMaxElementMask(randomIndices, tData.verticesList)
+            if vertexBuffer.elementMask is None and guessedElementMask:
+                vertexBuffer.elementMask = guessedElementMask
+                
             # Add vertices to the vertex buffer
             for tVertexIndex in tLodLevel.indexSet:
             
@@ -859,6 +877,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                     uVertex = UrhoVertex(tVertex, vertexBuffer)
                 except MaskError as e:
                     if not tVertex.blenderIndex is None:
+                        errorsIndices = errorsMem.Get("element mask " + str(e), set() )
                         errorsIndices.add(tVertex.blenderIndex)
                     log.warning("Incompatible vertex element mask in object {:s} ({:s})".format(uModel.name, e))
                                 
@@ -1039,7 +1058,27 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
         uMorph = UrhoVertexMorph()
         uMorph.name = tMorph.name
         uModel.morphs.append(uMorph)
-        
+
+        # Get 90 random vertices hoping to get some in all the vertex buffers
+        guessingIndices = defaultdict(list)
+        indicesAll = tMorph.vertexMap.keys()
+        randomIndicesAll = random.sample(indicesAll, min(90, len(indicesAll)) )
+        randomVertices = []
+        for tVertexIndex in randomIndicesAll:
+            # Get the correspondent Urho vertex buffer and vertex index (there can be more than one)
+            vbviSet = modelIndexMap[tVertexIndex]
+            # For each corresponding vertex buffer
+            for uVertexBufferIndex, uVertexIndex in vbviSet:
+                guessingIndices[uVertexBufferIndex].append(len(randomVertices))
+                randomVertices.append(tMorph.vertexMap[tVertexIndex])
+                
+        # Try to guess the most complete element mask for each vertex buffer
+        guessedElementMasks = {}
+        for bufferIndex, randomIndices in guessingIndices.items():
+            elementMask = GetMaxElementMask(randomIndices, randomVertices)
+            if elementMask:
+                guessedElementMasks[bufferIndex] = elementMask
+                        
         # For each vertex affected by the morph
         for tVertexIndex, tMorphVertex in tMorph.vertexMap.items():
             # Get the correspondent Urho vertex buffer and vertex index (there can be more than one)
@@ -1053,11 +1092,15 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsDict):
                     uMorphVertexBuffer = UrhoVertexBuffer()
                     uMorph.vertexBufferMap[uVertexBufferIndex] = uMorphVertexBuffer
                 
+                if uMorphVertexBuffer.elementMask is None and uVertexBufferIndex in guessedElementMasks:
+                    uMorphVertexBuffer.elementMask = guessedElementMasks[uVertexBufferIndex]
+                    
                 # Create the morphed vertex
                 try:
                     uMorphVertex = UrhoVertex(tMorphVertex, uMorphVertexBuffer)
                 except MaskError as e:
                     if not tVertex.blenderIndex is None:
+                        errorsMorphIndices = errorsMem.Get("morph element mask " + str(e), set() )
                         errorsMorphIndices.add(tMorphVertex.blenderIndex)
                     log.warning("Incompatible vertex element mask in morph {:s} of object {:s} ({:s})"
                                 .format(uMorph.name, uModel.name, e))

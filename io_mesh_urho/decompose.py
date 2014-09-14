@@ -315,8 +315,6 @@ class TData:
         self.bonesMap = OrderedDict()
         # List of TAnimation
         self.animationsList = []
-        # Dictionary container for errors
-        self.errorsDict = {}
 
 class TOptions:
     def __init__(self):
@@ -374,11 +372,17 @@ class TOptions:
 # http://www.terathon.com/code/tangent.html
 #--------------------
         
-def GenerateTangents(tLodLevels, tVertexList, invalidUvIndices):
+def GenerateTangents(tLodLevels, tVertexList, errorsMem):
 
     if not tVertexList:
         log.warning("No vertices, tangent generation cancelled.")
         return
+
+    nullUvIndices = None
+    incompleteUvIndices = None
+    if errorsMem:
+        nullUvIndices = errorsMem.Get("null UV area", set() )
+        incompleteUvIndices = errorsMem.Get("imcomplete UV", set() )
 
     # Init the values
     tangentOverwritten = 0    
@@ -397,15 +401,18 @@ def GenerateTangents(tLodLevels, tVertexList, invalidUvIndices):
                 
             # Check if we have all the needed data to do the calculations
             if vertex.pos is None:
-                invalidUvIndices.add(vertex.blenderIndex)
+                if incompleteUvIndices is not None:
+                    incompleteUvIndices.add(vertex.blenderIndex)
                 log.warning("Missing position on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
                 return
             if vertex.normal is None:
-                invalidUvIndices.add(vertex.blenderIndex)
+                if incompleteUvIndices is not None:
+                    incompleteUvIndices.add(vertex.blenderIndex)
                 log.warning("Missing normal on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
                 return
             if vertex.uv is None:
-                invalidUvIndices.add(vertex.blenderIndex)
+                if incompleteUvIndices is not None:
+                    incompleteUvIndices.add(vertex.blenderIndex)
                 log.warning("Missing UV on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
                 return
             
@@ -456,9 +463,10 @@ def GenerateTangents(tLodLevels, tVertexList, invalidUvIndices):
             # If the determinant is zero then the points (0,0), (u1,v1), (u2,v2) are in line, this means
             # the area on the UV map of this triangle is null. This is an error, we must skip this triangle.
             if d == 0:
-                invalidUvIndices.add(vertex1.blenderIndex)
-                invalidUvIndices.add(vertex2.blenderIndex)
-                invalidUvIndices.add(vertex3.blenderIndex)
+                if nullUvIndices is not None:
+                    nullUvIndices.add(vertex1.blenderIndex)
+                    nullUvIndices.add(vertex2.blenderIndex)
+                    nullUvIndices.add(vertex3.blenderIndex)
                 invalidUV = True
                 continue
 
@@ -1408,13 +1416,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 # Decompose geometries and morphs
 #---------------------------------
 
-def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
-
-    try:
-        invalidUvIndices = errorsDict["invalid UV"]
-    except KeyError:
-        invalidUvIndices = set()
-        errorsDict["invalid UV"] = invalidUvIndices
+def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
 
     verticesList = tData.verticesList
     geometriesList = tData.geometriesList
@@ -1422,6 +1424,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
     materialGeometryMap = tData.materialGeometryMap
     morphsList = tData.morphsList
     bonesMap = tData.bonesMap
+    meshIndex = errorsMem.SecondIndex(meshObj.name)
     
     verticesMap = {}
     
@@ -1663,7 +1666,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
             tVertex = TVertex()
             
             # Set Blender index
-            tVertex.blenderIndex = vertexIndex
+            tVertex.blenderIndex = (meshIndex, vertexIndex)
 
             # Set Vertex position
             if tOptions.doGeometryPos:
@@ -1808,7 +1811,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
             log.info("Generating tangents on {:d} indices for {:s} Geometry{:d}"
                     .format(len(lodLevel.indexSet), meshObj.name, geometryIndex) )
             lodLevels.append(lodLevel)
-        GenerateTangents(lodLevels, verticesList, invalidUvIndices)
+        GenerateTangents(lodLevels, verticesList, errorsMem)
             
     # Optimize vertex index buffer for the last LOD of every geometry with new vertices
     if tOptions.doOptimizeIndices:
@@ -1903,7 +1906,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
                 tMorphVertex = TVertex()
 
                 # Set Blender index
-                tMorphVertex.blenderIndex = vertexIndex
+                tMorphVertex.blenderIndex = (meshIndex, vertexIndex)
 
                 # Set Vertex position
                 tMorphVertex.pos = Vector((position.x, position.z, position.y))
@@ -1976,7 +1979,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsDict):
 #--------------------
 
 # Scan and decompose objects
-def Scan(context, tDataList, tOptions):
+def Scan(context, tDataList, errorsMem, tOptions):
     
     scene = context.scene
     
@@ -2124,7 +2127,7 @@ def Scan(context, tDataList, tOptions):
         # Decompose geometries
         if tOptions.doGeometries:
             savedValue = SetRestPosePosition(context, armatureObj)
-            DecomposeMesh(scene, obj, tData, tOptions, tData.errorsDict)                
+            DecomposeMesh(scene, obj, tData, tOptions, errorsMem)
             RestorePosePosition(armatureObj, savedValue)
 
 #-----------------------------------------------------------------------------

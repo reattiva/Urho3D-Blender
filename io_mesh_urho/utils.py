@@ -50,6 +50,60 @@ class FOptions:
 
 
 #--------------------
+# Errors container
+#--------------------
+    
+class ErrorsMem:
+    def __init__(self):
+        self.errors = {}
+        self.seconds = []
+
+    def Get(self, name, defaultValue = None):
+        try:
+            return self.errors[name]
+        except KeyError:
+            if defaultValue is not None:
+                self.errors[name] = defaultValue
+            return defaultValue
+
+    def Delete(self, name):
+        if name in self.errors:
+            del self.errors[name]
+
+    def Cleanup(self):
+        emptyList = []
+        for name in self.errors.keys():
+            try:
+                if not self.errors[name]:
+                    emptyList.append(name)
+            except TypeError:
+                pass
+        for name in emptyList:
+            del self.errors[name]
+
+    def Names(self):
+        return self.errors.keys()
+
+    def Second(self, index):
+        try:
+            return self.seconds[index]
+        except IndexError:
+            return None
+
+    def SecondIndex(self, second):
+        try:
+            return self.seconds.index(second)
+        except ValueError:
+            index = len(self.seconds)
+            self.seconds.append(second)
+            return index
+
+    def Clear(self):
+        self.errors.clear()
+        self.seconds.clear()
+
+
+#--------------------
 # File utilities
 #--------------------
 

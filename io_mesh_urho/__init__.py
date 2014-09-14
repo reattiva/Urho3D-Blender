@@ -46,7 +46,7 @@ from .decompose import TOptions, Scan
 from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
                          UrhoWriteTriggers, UrhoExport
 from .export_scene import SOptions, UrhoScene, UrhoExportScene, UrhoWriteMaterial, UrhoWriteMaterialsList
-from .utils import PathType, FOptions, GetFilepath, CheckFilepath
+from .utils import PathType, FOptions, GetFilepath, CheckFilepath, ErrorsMem
 if DEBUG: from .testing import PrintUrhoData, PrintAll
 
 import os
@@ -122,6 +122,7 @@ log.addHandler(listHandler)
 consoleHandler = logging.StreamHandler()
 consoleHandler.addFilter(consoleFilter)
 log.addHandler(consoleHandler)
+
 
 
 #--------------------
@@ -251,6 +252,22 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             self.selectErrors = False
 
         self.updatingProperties = False
+
+    def errors_update_func(self, context):
+        if self.updatingProperties:
+            return
+        self.updatingProperties = True
+        errorName = self.errorsEnum
+        self.errorsEnum = 'NONE'
+        self.updatingProperties = False
+        selectErrors(context, self.errorsMem, errorName)
+        
+    def errors_items_func(self, context):
+        items = [('NONE', "", ""),
+                 ('ALL',  "all", "")]
+        for error in self.errorsMem.Names():
+            items.append( (error, error, "") )
+        return items
 
     # Set all the export settings back to their default values
     def reset(self, context): 
@@ -409,22 +426,29 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     modifiersRes = EnumProperty(
             name = "Modifiers setting",
             description = "Resolution setting to use while applying modifiers",
-            items=(('PREVIEW', "Preview", "use the Preview resolution setting"),
-                   ('RENDER', "Render", "use the Render resolution setting")),
-            default='RENDER')
+            items = (('PREVIEW', "Preview", "use the Preview resolution setting"),
+                     ('RENDER', "Render", "use the Render resolution setting")),
+            default = 'RENDER')
 
     origin = EnumProperty(
             name = "Mesh origin",
             description = "Origin for the position of vertices/bones",
             items=(('GLOBAL', "Global", "Blender's global origin"),
                    ('LOCAL', "Local", "object's local origin (orange dot)")),
-            default='LOCAL')
+            default = 'LOCAL')
 
     selectErrors = BoolProperty(
             name = "Select vertices with errors",
             description = "If a vertex has errors (e.g. invalid UV, missing UV or color or weights) select it",
             default = True,
             update = update_func)
+
+    errorsMem = ErrorsMem()
+    errorsEnum = EnumProperty(
+            name = "",
+            description = "List of errors",
+            items = errors_items_func,
+            update = errors_update_func)
 
     forceElements = BoolProperty(
             name = "Force missing elements",
@@ -802,7 +826,10 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.separator()
             row.prop(settings, "modifiersRes", expand=True)
 
-        box.prop(settings, "selectErrors")
+        row = box.row()
+        row.prop(settings, "selectErrors")
+        row.prop(settings, "errorsEnum")
+        
         box.prop(settings, "forceElements")
         box.prop(settings, "merge")
         if settings.merge:
@@ -942,6 +969,8 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 def PostLoad(dummy):
     addonPrefs = bpy.context.user_preferences.addons[__name__].preferences
     settings = bpy.context.scene.urho_exportsettings
+    settings.errorsMem.Clear()
+    settings.updatingProperties = False
     if not settings.modelsPath and addonPrefs.modelsPath:
         settings.modelsPath = addonPrefs.modelsPath
         settings.animationsPath = addonPrefs.animationsPath
@@ -1012,7 +1041,7 @@ def unregister():
 #--------------------
 
 # Select vertices on a object
-def selectVertices(context, objectName, indicesList):
+def selectVertices(context, objectName, indicesList, deselect):
 
     objects = context.scene.objects
     
@@ -1028,7 +1057,7 @@ def selectVertices(context, objectName, indicesList):
     if bpy.ops.object.mode_set.poll():
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
     # Deselect all
-    if bpy.ops.mesh.select_all.poll():
+    if deselect and bpy.ops.mesh.select_all.poll():
         bpy.ops.mesh.select_all(action='DESELECT')
     # Save the current select mode
     sel_mode = bpy.context.tool_settings.mesh_select_mode
@@ -1051,6 +1080,27 @@ def selectVertices(context, objectName, indicesList):
     # Restore old selection mode
     bpy.context.tool_settings.mesh_select_mode = sel_mode 
 
+from collections import defaultdict
+
+# Select vertices with errors
+def selectErrors(context, errorsMem, errorName):
+    names = errorsMem.Names()
+    if errorName != 'ALL':
+        names = [errorName]
+    for i, name in enumerate(names):
+        errors = errorsMem.Get(name)
+        if not errors:
+            continue
+        indices = defaultdict(set)
+        for mi, vi in errors:
+            objectName = errorsMem.Second(mi)
+            if objectName:
+                indices[objectName].add(vi)
+        for objectName, indicesSet in indices.items():
+            count = len(indicesSet)
+            if count:
+                log.info( "Selecting {:d} vertices on {:s} with '{:s}' errors".format(count, objectName, name) )
+                selectVertices(context, objectName, indicesSet, i == 0)
 
 
 #-------------------------------------------------------------------------
@@ -1155,6 +1205,8 @@ def ExecuteUrhoExport(context):
     fOptions.paths[PathType.OBJECTS] = settings.objectsPath
     fOptions.paths[PathType.SCENES] = settings.scenesPath
 
+    settings.errorsMem.Clear()
+
     if not settings.outputPath:
         log.error( "Output path is not set" )
         return False
@@ -1164,7 +1216,7 @@ def ExecuteUrhoExport(context):
 
     # Decompose
     if DEBUG: ttt = time.time() #!TIME
-    Scan(context, tDataList, tOptions)
+    Scan(context, tDataList, settings.errorsMem, tOptions)
     if DEBUG: print("[TIME] Decompose in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 
     # Export each decomposed object
@@ -1181,7 +1233,7 @@ def ExecuteUrhoExport(context):
         uExportOptions.useStrictLods = settings.strictLods
 
         if DEBUG: ttt = time.time() #!TIME
-        UrhoExport(tData, uExportOptions, uExportData, tData.errorsDict)
+        UrhoExport(tData, uExportOptions, uExportData, settings.errorsMem)
         if DEBUG: print("[TIME] Export in {:.4f} sec".format(time.time() - ttt) ) #!TIME
         if DEBUG: ttt = time.time() #!TIME
 
@@ -1259,15 +1311,9 @@ def ExecuteUrhoExport(context):
 
         if DEBUG: print("[TIME] Write in {:.4f} sec".format(time.time() - ttt) ) #!TIME
 
-        if settings.selectErrors:
-            indices = set()
-            for key, value in tData.errorsDict.items():
-                if not value or not type(value) is set:
-                    continue
-                log.warning( "Selecting {:d} vertices on {:s} with '{:s}' errors".format(len(value), tData.objectName, key) )
-                indices.update(value)
-            if indices and tData.blenderObjectName:
-                selectVertices(context, tData.blenderObjectName, indices)
+    settings.errorsMem.Cleanup()
+    if settings.selectErrors:
+        selectErrors(context, settings.errorsMem, 'ALL')
     
     # Export scene and nodes
     if settings.prefabs:
