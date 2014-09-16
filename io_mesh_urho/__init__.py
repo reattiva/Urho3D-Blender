@@ -331,7 +331,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.individualPrefab = False
         self.collectivePrefab = False
         self.scenePrefab = False
-        self.physics = False
+        self.physics = 'INDIVIDUAL'
 
     # --- Accessory ---
 
@@ -666,11 +666,14 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False,
             update = update_func)
 
-    physics = BoolProperty(
-            name = "Apply physics",
-            description = "Generate physics for the root node. Default triangleMesh shape expecting a \"Physics\" model located in the same folder",
-            default = True,
-            update = update_func)
+    physics = EnumProperty(
+            name = "Physics",
+            description = "Generate physics RigidBody(s) & Shape(s)",
+            items=(('DISABLE', "No physics", "Do not create physics stuff"),
+                        ('GLOBAL', "Global", "Create a unic RigidBody + Shape at the root. Expects a 'Physics.mdl' model as TriangleMesh."),
+                        ('INDIVIDUAL', "Individual", "Create individual physics RigidBodies and Shapes")),
+            default='INDIVIDUAL',
+            update = update_func2)
 
     bonesGlobalOrigin = BoolProperty(name = "Bones global origin", default = False)
     actionsGlobalOrigin = BoolProperty(name = "Actions global origin", default = False)
@@ -1190,7 +1193,9 @@ def ExecuteUrhoExport(context):
     sOptions.doIndividualPrefab = settings.individualPrefab
     sOptions.doCollectivePrefab = settings.collectivePrefab
     sOptions.doScenePrefab = settings.scenePrefab
-    sOptions.doPhysics = settings.physics
+    sOptions.noPhysics = (settings.physics == 'DISABLE')
+    sOptions.individualPhysics = (settings.physics == 'INDIVIDUAL')
+    sOptions.globalPhysics = (settings.physics == 'GLOBAL')
 
     fOptions.useSubDirs = settings.useSubDirs
     fOptions.fileOverwrite = settings.fileOverwrite
