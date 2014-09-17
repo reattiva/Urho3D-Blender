@@ -68,7 +68,7 @@ class UrhoSceneModel:
             if parentObject and parentObject.type == 'MESH':
                 self.parentObjectName = parentObject.name
 
-        if len(uModel.bones) > 0:
+        if len(uModel.bones) > 0 or len(uModel.morphs) > 0:
             self.type = "AnimatedModel"
         else:
             self.type = "StaticModel"
