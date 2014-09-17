@@ -30,7 +30,7 @@
 # Inverse transpose for normals
 #  http://www.arcsynthesis.org/gltut/Illumination/Tut09%20Normal%20Transformation.html
 
-# Pthon binary writing:
+# Python binary writing:
 #  http://docs.python.org/2/library/struct.html
 
 DEBUG = 0
@@ -169,7 +169,7 @@ class TMorph:
     def __init__(self, name):
         # Morph name
         self.name = name
-        # Set of all vertex indices use by this morph
+        # Set of all vertex indices used by this morph
         self.indexSet = set()
         # List of triangles of the morph (triples of vertex indices)
         self.triangleList = []

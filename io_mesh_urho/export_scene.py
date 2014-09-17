@@ -25,7 +25,9 @@ class SOptions:
         self.doIndividualPrefab = False
         self.doCollectivePrefab = False
         self.doScenePrefab = False
-        self.doPhysics = False
+        self.noPhysics = False
+        self.individualPhysics = False
+        self.globalPhysics = False
         self.mergeObjects = False
 
 
@@ -66,7 +68,7 @@ class UrhoSceneModel:
             if parentObject and parentObject.type == 'MESH':
                 self.parentObjectName = parentObject.name
 
-        if len(uModel.bones) > 0:
+        if len(uModel.bones) > 0 or len(uModel.morphs) > 0:
             self.type = "AnimatedModel"
         else:
             self.type = "StaticModel"
@@ -240,7 +242,7 @@ def IndividualPrefabXml(uScene, uSceneModel, sOptions):
     materialElem.set("name", "Material")
     materialElem.set("value", "Material" + materials)
 
-    if sOptions.doPhysics:
+    if not sOptions.noPhysics:
         bodyElem = ET.SubElement(rootNodeElem, "component")
         bodyElem.set("type", "RigidBody")
         bodyElem.set("id", "{:d}".format(nodeID+1))
@@ -260,10 +262,6 @@ def IndividualPrefabXml(uScene, uSceneModel, sOptions):
         shapeTypeElem = ET.SubElement(shapeElem, "attribute")
         shapeTypeElem.set("name", "Shape Type")
         shapeTypeElem.set("value", "TriangleMesh")
-
-        shapeTypeElem = ET.SubElement(shapeElem, "attribute")
-        shapeTypeElem.set("name", "Offset Position")
-        shapeTypeElem.set("value", "0 1.02 0")
 
         physicsModelElem = ET.SubElement(shapeElem, "attribute")
         physicsModelElem.set("name", "Model")
@@ -315,7 +313,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         a["{:d}".format(m+3)].set("value", "Directional")
         m += 4
 
-        if sOptions.doPhysics:
+        if not sOptions.noPhysics:
             a["{:d}".format(m)] = ET.SubElement(sceneRoot, "component")
             a["{:d}".format(m)].set("type", "PhysicsWorld")
             a["{:d}".format(m)].set("id", "4")
@@ -333,7 +331,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
     a["{:d}".format(m)].set("value", uScene.blenderSceneName)
 
     # Create physics stuff for the root node
-    if sOptions.doPhysics:
+    if sOptions.globalPhysics:
         a["{:d}".format(m)] = ET.SubElement(root, "component")
         a["{:d}".format(m)].set("type", "RigidBody")
         a["{:d}".format(m)].set("id", "{:d}".format(compoID))
@@ -383,7 +381,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         # If child node, parent to parent object instead of root
         if uSceneModel.type == "StaticModel" and uSceneModel.parentObjectName:
             for usm in uScene.modelsList:
-                if usm.objectName == uSceneModel.parentObjectName:
+                if usm.name == uSceneModel.parentObjectName:
                     a[modelNode] = ET.SubElement(a[usm.name], "node") 
                     break;
         else: 
@@ -411,6 +409,38 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         a["{:d}".format(m)].set("value", "Material" + materials)
         m += 1
         compoID += 1
+
+        if sOptions.individualPhysics:
+            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
+            a["{:d}".format(m)].set("type", "RigidBody")
+            a["{:d}".format(m)].set("id", "{:d}".format(compoID))
+            m += 1
+
+            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)], "attribute")
+            a["{:d}".format(m)].set("name", "Collision Layer")
+            a["{:d}".format(m)].set("value", "{:f}".format(2))
+            m += 1
+
+            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
+            a["{:d}".format(m)].set("name", "Use Gravity")
+            a["{:d}".format(m)].set("value", "false")
+            m += 1
+
+            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
+            a["{:d}".format(m)].set("type", "CollisionShape")
+            a["{:d}".format(m)].set("id", "{:d}".format(compoID+1))
+            m += 1
+
+            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)] , "attribute")
+            a["{:d}".format(m)].set("name", "Shape Type")
+            a["{:d}".format(m)].set("value", "TriangleMesh")
+            m += 1
+
+            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
+            a["{:d}".format(m)].set("name", "Model")
+            a["{:d}".format(m)].set("value", "Model;" + modelFile)
+
+            compoID += 2
 
         # Write individual prefabs
         if sOptions.doIndividualPrefab:
