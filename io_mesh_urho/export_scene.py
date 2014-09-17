@@ -126,7 +126,7 @@ def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
     techniqueElem = ET.SubElement(materialElem, "technique")
     techniqueElem.set("name", techniquFile[1])
 
-    # Tectures
+    # Textures
     if uMaterial.diffuseTexName:
         diffuseElem = ET.SubElement(materialElem, "texture")
         diffuseElem.set("unit", "diffuse")
