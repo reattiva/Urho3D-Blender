@@ -118,14 +118,6 @@ def GetFilepath(pathType, name, fOptions):
     if fOptions.useSubDirs:
         fullPath = os.path.join(fullPath, fOptions.paths[pathType])
 
-    # Create the full path if missing
-    if not os.path.isdir(fullPath):
-        try:
-            os.makedirs(fullPath)
-            log.info( "Created path {:s}".format(fullPath) )
-        except Exception as e:
-            log.error("Cannot create path {:s} {:s}".format(fullPath, e))
-
     # Compose filename
     filename = name
     if type(filename) is list or type(filename) is tuple:
@@ -153,16 +145,25 @@ def GetFilepath(pathType, name, fOptions):
 
 
 # Check if 'filepath' is valid
-def CheckFilepath(filepath, fOptions):
+def CheckFilepath(fileFullPaths, fOptions):
 
-    fp = filepath
-    if type(filepath) is tuple:
-        fp = filepath[0]
+    fileFullPath = fileFullPaths
+    if type(fileFullPaths) is tuple:
+        fileFullPath = fileFullPaths[0]
 
-    if os.path.exists(fp) and not fOptions.fileOverwrite:
-        log.error( "File already exists {:s}".format(fp) )
+    # Create the full path if missing
+    fullPath = os.path.dirname(fileFullPath)
+    if not os.path.isdir(fullPath):
+        try:
+            os.makedirs(fullPath)
+            log.info( "Created path {:s}".format(fullPath) )
+        except Exception as e:
+            log.error("Cannot create path {:s} {:s}".format(fullPath, e))
+
+    if os.path.exists(fileFullPath) and not fOptions.fileOverwrite:
+        log.error( "File already exists {:s}".format(fileFullPath) )
         return False
-        
+
     return True
 
 
