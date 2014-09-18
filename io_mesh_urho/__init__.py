@@ -1247,70 +1247,69 @@ def ExecuteUrhoExport(context):
         for uModel in uExportData.models:
             if uModel.geometries:
                 filepath = GetFilepath(PathType.MODELS, uModel.name, fOptions)
+                uScene.AddFile(PathType.MODELS, uModel.name, filepath[1])
                 if CheckFilepath(filepath[0], fOptions):
-                    uScene.AddFile(PathType.MODELS, uModel.name, filepath[1])
                     log.info( "Creating model {:s}".format(filepath[1]) )
                     UrhoWriteModel(uModel, filepath[0]) 
             
         for uAnimation in uExportData.animations:
             filepath = GetFilepath(PathType.ANIMATIONS, uAnimation.name, fOptions)
+            uScene.AddFile(PathType.ANIMATIONS, uAnimation.name, filepath[1])
             if CheckFilepath(filepath[0], fOptions):
-                uScene.AddFile(PathType.ANIMATIONS, uAnimation.name, filepath[1])
                 log.info( "Creating animation {:s}".format(filepath[1]) )
                 UrhoWriteAnimation(uAnimation, filepath[0])
 
             if uAnimation.triggers:
                 filepath = GetFilepath(PathType.TRIGGERS, uAnimation.name, fOptions)
+                uScene.AddFile(PathType.TRIGGERS, uAnimation.name, filepath[1])
                 if CheckFilepath(filepath[0], fOptions):
-                    uScene.AddFile(PathType.TRIGGERS, uAnimation.name, filepath[1])
                     log.info( "Creating triggers {:s}".format(filepath[1]) )
                     UrhoWriteTriggers(uAnimation.triggers, filepath[0], fOptions)
                 
-        if settings.textures:
-            for uMaterial in uExportData.materials:
-                for textureName in uMaterial.getTextures():
-                    # Check the texture name (it can be a filename)
-                    if textureName is None:
-                        continue
-                    # Check if the Blender image data exists
-                    image = bpy.data.images[textureName]
-                    if image is None:
-                        continue
-                    # Get the texture file full path
-                    srcFilename = bpy.path.abspath(image.filepath)
-                    # Get the destination file full path (preserve the extension)
-                    fOptions.preserveExtTemp = True
-                    filepath = GetFilepath(PathType.TEXTURES, textureName, fOptions)
-                    # Copy or unpack the texture
-                    if CheckFilepath(filepath[0], fOptions):
-                        # Check if already exported
-                        if not uScene.AddFile(PathType.TEXTURES, textureName, filepath[1]):
-                            continue
-                        if image.packed_file:
-                            log.info( "Unpacking texture {:s}".format(filepath[1]) )
-                            image.save_render(filepath[0])
-                        elif not os.path.exists(srcFilename):
-                            log.error( "Miissing source texture {:s}".format(srcFilename) )
-                        else:
-                            try:
-                                log.info( "Copying texture {:s}".format(filepath[1]) )
-                                shutil.copyfile(src = srcFilename, dst = filepath[0])
-                            except:
-                                log.error( "Cannot copy texture to {:s}".format(filepath[0]) )
+        for uMaterial in uExportData.materials:
+            for textureName in uMaterial.getTextures():
+                # Check the texture name (it can be a filename)
+                if textureName is None:
+                    continue
+                # Check if the Blender image data exists
+                image = bpy.data.images[textureName]
+                if image is None:
+                    continue
+                # Get the texture file full path
+                srcFilename = bpy.path.abspath(image.filepath)
+                # Get the destination file full path (preserve the extension)
+                fOptions.preserveExtTemp = True
+                filepath = GetFilepath(PathType.TEXTURES, textureName, fOptions)
+                # Check if already exported
+                if not uScene.AddFile(PathType.TEXTURES, textureName, filepath[1]):
+                    continue
+                # Copy or unpack the texture
+                if settings.textures and CheckFilepath(filepath[0], fOptions):
+                    if image.packed_file:
+                        log.info( "Unpacking texture {:s}".format(filepath[1]) )
+                        image.save_render(filepath[0])
+                    elif not os.path.exists(srcFilename):
+                        log.error( "Miissing source texture {:s}".format(srcFilename) )
+                    else:
+                        try:
+                            log.info( "Copying texture {:s}".format(filepath[1]) )
+                            shutil.copyfile(src = srcFilename, dst = filepath[0])
+                        except:
+                            log.error( "Cannot copy texture to {:s}".format(filepath[0]) )
 
         if settings.materials:
             for uMaterial in uExportData.materials:
                 filepath = GetFilepath(PathType.MATERIALS, uMaterial.name, fOptions)
+                uScene.AddFile(PathType.MATERIALS, uMaterial.name, filepath[1])
                 if CheckFilepath(filepath[0], fOptions):
-                    uScene.AddFile(PathType.MATERIALS, uMaterial.name, filepath[1])
                     log.info( "Creating material {:s}".format(filepath[1]) )
                     UrhoWriteMaterial(uScene, uMaterial, filepath[0], fOptions)
                     
             if settings.materialsList:
                 for uModel in uExportData.models:
                     filepath = GetFilepath(PathType.MATLIST, uModel.name, fOptions)
+                    uScene.AddFile(PathType.MATLIST, uModel.name, filepath[1])
                     if CheckFilepath(filepath[0], fOptions):
-                        uScene.AddFile(PathType.MATLIST, uModel.name, filepath[1])
                         log.info( "Creating materials list {:s}".format(filepath[1]) )
                         UrhoWriteMaterialsList(uScene, uModel, filepath[0])
 
