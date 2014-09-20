@@ -332,6 +332,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.collectivePrefab = False
         self.scenePrefab = False
         self.physics = 'INDIVIDUAL'
+        self.shape = 'TRIANGLEMESH'
 
     # --- Accessory ---
 
@@ -669,10 +670,20 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     physics = EnumProperty(
             name = "Physics",
             description = "Generate physics RigidBody(s) & Shape(s)",
-            items=(('DISABLE', "No physics", "Do not create physics stuff"),
+            items = (('DISABLE', "No physics", "Do not create physics stuff"),
                         ('GLOBAL', "Global", "Create a unic RigidBody + Shape at the root. Expects a 'Physics.mdl' model as TriangleMesh."),
                         ('INDIVIDUAL', "Individual", "Create individual physics RigidBodies and Shapes")),
-            default='INDIVIDUAL',
+            default = 'INDIVIDUAL',
+            update = update_func2)
+
+    shapeItems = [ ('BOX', "Box", ""), ('CAPSULE', "Capsule", ""), ('CONE', "Cone", ""), \
+                ('CONVEXHULL', "ConvexHull", ""), ('CYLINDER', "Cylinder", ""), ('SPHERE', "Sphere", ""), \
+                ('STATICPLANE', "StaticPlane", ""), ('TRIANGLEMESH', "TriangleMesh", "") ]
+    shape = EnumProperty(
+            name = "CollisionShape",
+            description = "CollisionShape type. Discarded if 'Collision Bounds' is checked in Physics panel.",
+            items = shapeItems,
+            default = 'TRIANGLEMESH',
             update = update_func2)
 
     bonesGlobalOrigin = BoolProperty(name = "Bones global origin", default = False)
@@ -962,6 +973,11 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.prop(settings, "physics")
             row.label("", icon='PHYSICS')
 
+            row = box.row()
+            row.separator()
+            row.prop(settings, "shape")
+            row.label("", icon='GROUP')
+
 
 #--------------------
 # Handlers
@@ -1188,6 +1204,13 @@ def ExecuteUrhoExport(context):
         tOptions.orientation = Quaternion((1.0,0.0,0.0), radians(-90.0)) * Quaternion((0.0,0.0,1.0), radians(180.0))
     elif settings.orientation == 'Z_MINUS':
         tOptions.orientation = Quaternion((1.0,0.0,0.0), radians(90.0)) * Quaternion((0.0,0.0,1.0), radians(180.0))
+
+    sOptions.shapeItems = settings.shapeItems
+    for shapeItems in settings.shapeItems:
+        if shapeItems[0] == settings.shape:
+            tOptions.shape = shapeItems[1]
+            sOptions.shape = shapeItems[1]
+            break
 
     sOptions.mergeObjects = settings.merge
     sOptions.doIndividualPrefab = settings.individualPrefab
