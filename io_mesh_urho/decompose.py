@@ -315,6 +315,8 @@ class TData:
         self.bonesMap = OrderedDict()
         # List of TAnimation
         self.animationsList = []
+        # List of physics settings
+        self.physicsSettings = []
 
 class TOptions:
     def __init__(self):
@@ -364,6 +366,7 @@ class TOptions:
         self.doMorphUV = True
         self.doOptimizeIndices = True
         self.doMaterials = True
+        self.shape = None
         
 
 #--------------------
@@ -2094,8 +2097,21 @@ def Scan(context, tDataList, errorsMem, tOptions):
         if not tData or createNew:
             tData = TData()
             tData.objectName = lodName
+            tData.physicsSettings = [tOptions.shape] #tData.physicsSettings = [tOptions.shape, obj.game.physics_type, obj.game.mass, obj.game.radius, obj.game.velocity_min, obj.game.velocity_max, obj.game.collision_group, obj.game.collision_mask, obj.game.use_ghost]
             if not tOptions.mergeObjects:
                 tData.blenderObjectName = obj.name
+
+                # Overwrite CollisionShape set in Export settings if 'Collision Bounds' is checked in Properties > Physics
+                if obj.game.use_collision_bounds:
+                    if obj.game.collision_bounds_type == 'CAPSULE': shape = "Capsule"
+                    if obj.game.collision_bounds_type == 'BOX': shape = "Box"
+                    if obj.game.collision_bounds_type == 'SPHERE': shape = "Sphere"
+                    if obj.game.collision_bounds_type == 'CYLINDER': shape = "Cylinder"
+                    if obj.game.collision_bounds_type == 'CONE': shape = "Cone"
+                    if obj.game.collision_bounds_type == 'CONVEX HULL': shape = "ConvexHull"
+                    if obj.game.collision_bounds_type == 'TRIANGLE MESH': shape = "TriangleMesh"
+                    tData.physicsSettings[0] = shape
+
             tDataList.append(tData)
             tOptions.lodUpdatedGeometryIndices.clear() # request new LOD
             tOptions.lodDistance = 0.0

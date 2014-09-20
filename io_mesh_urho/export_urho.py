@@ -332,7 +332,7 @@ class UrhoModel:
         self.morphs = []
         # List of UrhoBone
         self.bones = []
-        # Bounding box, containd each LOD of each geometry
+        # Bounding box, contains each LOD of each geometry
         self.boundingBox = BoundingBox()
         
 # --- Animation classes ---
@@ -758,6 +758,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
     uModel = UrhoModel()
     uModel.name = tData.objectName
     uExportData.models.append(uModel)    
+    uModel.physicsSettings = tData.physicsSettings
     
     # For each bone
     for boneName, bone in tData.bonesMap.items():
