@@ -100,6 +100,8 @@ class UrhoScene:
         return True
 
     def FindFile(self, pathType, name):
+        if name is None:
+            return None
         try:
             return self.files[pathType+name]
         except KeyError:
