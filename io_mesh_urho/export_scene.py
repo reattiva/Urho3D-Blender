@@ -8,6 +8,7 @@ from .utils import PathType, GetFilepath, CheckFilepath, \
                    WriteXmlFile
 
 from xml.etree import ElementTree as ET
+from mathutils import Vector
 import bpy
 import os
 import logging
@@ -29,6 +30,7 @@ class SOptions:
         self.individualPhysics = False
         self.globalPhysics = False
         self.mergeObjects = False
+        self.shape = None
 
 
 class UrhoSceneMaterial:
@@ -58,6 +60,12 @@ class UrhoSceneModel:
         self.type = None
         # List of UrhoSceneMaterial
         self.materialsList = []
+        # CollisionShape type
+        self.shapeType = None
+        # CollisionShape size (Vector)
+        self.shapeSize = None
+        # CollisionShape offset (Vector)
+        self.shapeOffset = None
 
     def Load(self, uExportData, uModel, objectName):
         self.name = uModel.name
@@ -77,6 +85,20 @@ class UrhoSceneModel:
             uSceneMaterial = UrhoSceneMaterial()
             uSceneMaterial.Load(uExportData, uGeometry)
             self.materialsList.append(uSceneMaterial)
+
+        #Use model's bounding box to compute CollisionShape's size and offset
+        self.shapeType = uModel.physicsSettings[0]
+        bbox = uModel.boundingBox
+        #Size
+        x = bbox.max[0] - bbox.min[0]
+        y = bbox.max[1] - bbox.min[1]
+        z = bbox.max[2] - bbox.min[2]
+        self.shapeSize = Vector((x, y, z))
+        #Offset
+        offsetX = bbox.max[0] - x / 2
+        offsetY = bbox.max[1] - y / 2
+        offsetZ = bbox.max[2] - z / 2
+        self.shapeOffset = Vector((offsetX, offsetY, offsetZ))
 
 
 class UrhoScene:
@@ -261,11 +283,21 @@ def IndividualPrefabXml(uScene, uSceneModel, sOptions):
 
         shapeTypeElem = ET.SubElement(shapeElem, "attribute")
         shapeTypeElem.set("name", "Shape Type")
-        shapeTypeElem.set("value", "TriangleMesh")
+        shapeTypeElem.set("value", uSceneModel.shapeType)
 
-        physicsModelElem = ET.SubElement(shapeElem, "attribute")
-        physicsModelElem.set("name", "Model")
-        physicsModelElem.set("value", "Model;" + modelFile)
+        if uSceneModel.shapeType == "TriangleMesh":
+            physicsModelElem = ET.SubElement(shapeElem, "attribute")
+            physicsModelElem.set("name", "Model")
+            physicsModelElem.set("value", "Model;" + modelFile)
+
+        else:
+            shapeSizeElem = ET.SubElement(shapeElem, "attribute")
+            shapeSizeElem.set("name", "Size")
+            shapeSizeElem.set("value", Vector3ToString(uSceneModel.shapeSize))
+
+            shapeOffsetElem = ET.SubElement(shapeElem, "attribute")
+            shapeOffsetElem.set("name", "Offset Position")
+            shapeOffsetElem.set("value", Vector3ToString(uSceneModel.shapeOffset))
 
     return rootNodeElem
 
@@ -433,12 +465,24 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
 
             a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)] , "attribute")
             a["{:d}".format(m)].set("name", "Shape Type")
-            a["{:d}".format(m)].set("value", "TriangleMesh")
+            a["{:d}".format(m)].set("value", uSceneModel.shapeType)
             m += 1
 
-            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
-            a["{:d}".format(m)].set("name", "Model")
-            a["{:d}".format(m)].set("value", "Model;" + modelFile)
+            if uSceneModel.shapeType == "TriangleMesh":
+                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
+                a["{:d}".format(m)].set("name", "Model")
+                a["{:d}".format(m)].set("value", "Model;" + modelFile)
+
+            else:
+                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)] , "attribute")
+                a["{:d}".format(m)].set("name", "Size")
+                a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.shapeSize))
+                m += 1
+
+                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-3)] , "attribute")
+                a["{:d}".format(m)].set("name", "Offset Position")
+                a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.shapeOffset))
+                m += 1
 
             compoID += 2
 
