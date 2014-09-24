@@ -1357,6 +1357,8 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     poseMatrix = parent.matrix.inverted() * poseMatrix
                 else:
                     # Root bone matrix relative to the armature
+                    if tOptions.orientation:
+                        poseMatrix = tOptions.orientation.to_matrix().to_4x4() * poseMatrix
                     poseMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) * originMatrix * poseMatrix
 
                 if tOptions.scale != 1.0:
