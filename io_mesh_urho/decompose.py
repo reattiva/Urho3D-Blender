@@ -196,11 +196,11 @@ class TMaterial:
         self.name = name
         # Diffuse color (0.0, 0.0, 0.0)
         self.diffuseColor = None
-        # Diffuse intesity (0.0)
+        # Diffuse intensity (0.0)
         self.diffuseIntensity = None
         # Specular color (0.0, 0.0, 0.0)
         self.specularColor = None
-        # Specular intesity (0.0)
+        # Specular intensity (0.0)
         self.specularIntensity = None
         # Specular hardness (1.0)
         self.specularHardness = None
@@ -382,7 +382,7 @@ def GenerateTangents(tLodLevels, tVertexList, errorsMem):
     incompleteUvIndices = None
     if errorsMem:
         nullUvIndices = errorsMem.Get("null UV area", set() )
-        incompleteUvIndices = errorsMem.Get("imcomplete UV", set() )
+        incompleteUvIndices = errorsMem.Get("incomplete UV", set() )
 
     # Init the values
     tangentOverwritten = 0    
@@ -431,7 +431,7 @@ def GenerateTangents(tLodLevels, tVertexList, errorsMem):
             # find two unit orthogonal vectors (tangent and bitangent) such as we can express each vertex position as a function
             # of the vertex UV: 
             #  VertexPosition = Tangent * f'(VertexUV) + BiTangent * f"(VertexUV)
-            # Actually we are going to express them relatively to a vertex choosen as origin (vertex1):
+            # Actually we are going to express them relatively to a vertex chosen as origin (vertex1):
             #  vertex - vertex1 = Tangent * (vertex.u - vertex1.u) + BiTangent * (vertex.v - vertex1.v)
             # We have two equations, one for vertex2-vertex1 and one for vertex3-vertex1, if we put them in a system and solve it
             # we can obtain Tangent and BiTangent:
@@ -610,7 +610,7 @@ def OptimizeIndices(lodLevel):
     # - recalculate the score on all the vertices on the cache.
     # The slowest part is the first step, scanning all the old triangles,
     # but in the last step we update only a little subset of these triangles,
-    # and it is a waste to recalculate the triangle score of each old triamgle.
+    # and it is a waste to recalculate the triangle score of each old triangle.
     # So we do this:
     # - create a map 'trianglesMap': vertex index to triangles;
     # - keep a list 'trianglesRanking' of the best triangles;
@@ -778,8 +778,9 @@ def SetRestPosePosition(context, armatureObj):
     # Force the armature in the rest position (warning: https://developer.blender.org/T24674)
     # This should reset bones matrices ok, but for sure it is not resetting the mesh tessfaces
     # positions
-    savedPosePosition = armatureObj.data.pose_position
+    savedPosePositionAndVisibility = [armatureObj.data.pose_position, armatureObj.hide]
     armatureObj.data.pose_position = 'REST'
+    armatureObj.hide = False
     
     # This should help to recalculate all the mesh vertices, it is needed by decomposeMesh
     # and maybe it helps decomposeArmature (but no problem was seen there)
@@ -793,12 +794,13 @@ def SetRestPosePosition(context, armatureObj):
         bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
     objects.active = savedObjectActive
         
-    return savedPosePosition
+    return savedPosePositionAndVisibility
 
 def RestorePosePosition(armatureObj, savedValue):
     if not armatureObj:
         return
-    armatureObj.data.pose_position = savedValue
+    armatureObj.data.pose_position = savedValue[0]
+    armatureObj.hide = savedValue[1]
 
 # -- Rigify -- 
 # In a Rigify system there are ORG bones and DEF bones. The DEF bones causes the mesh deformation
@@ -1000,7 +1002,7 @@ def DerigifyArmature(armature, tOptions):
 # How to read a skeleton: 
 # start from the root bone, move it of bindPosition in the armature space
 # then rotate the armature space with bindRotation, this will be the parent
-# space used by its childs. For each child bone move it of bindPosition in 
+# space used by its children. For each child bone move it of bindPosition in 
 # the parent space then rotate the parent space with bindRotation, and so on.
 
 # We need each bone position and rotation in parent bone space:
@@ -1070,11 +1072,11 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
     for bone, parent in bonesList:
     
         # 'bone.matrix_local' is referred to the armature, we need
-        # the trasformation between the current bone and its parent.
+        # the transformation between the current bone and its parent.
         boneMatrix = bone.matrix_local.copy()
         
         # Here 'bone.matrix_local' is in object(armature) space, so we have to
-        # calculate the bone trasformation in parent bone space
+        # calculate the bone transformation in parent bone space
         if parent:
             boneMatrix = parent.matrix_local.inverted() * boneMatrix
         else:
@@ -1082,7 +1084,7 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
             if tOptions.orientation:
                 boneMatrix = tOptions.orientation.to_matrix().to_4x4() * boneMatrix
             # Normally we don't have to worry that Blender is Z up and we want
-            # Y up because we use relative trasformations between bones. However
+            # Y up because we use relative transformations between bones. However
             # the parent bone is relative to the armature so we need to convert
             # Z up to Y up by rotating its matrix by -90° on X
             boneMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) * boneMatrix
@@ -1105,7 +1107,7 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
         # 1) rotate of -90° on X axis:
         # - swap column 1 with column 2
         # - negate column 1
-        # 2) convert bone trasformation in object space to left hand:        
+        # 2) convert bone transformation in object space to left hand:        
         # - swap row 1 with row 2
         # - swap column 1 with column 2
         # So putting them together:
@@ -1434,7 +1436,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
     
     log.info("Decomposing mesh: {:s} ({:d} vertices)".format(meshObj.name, len(mesh.vertices)) )
     
-    # If we use the object local origin (orange dot) we don't need trasformations
+    # If we use the object local origin (orange dot) we don't need transformations
     posMatrix = Matrix.Identity(4)
     normalMatrix = Matrix.Identity(4)
     
