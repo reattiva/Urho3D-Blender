@@ -1300,9 +1300,11 @@ def ExecuteUrhoExport(context):
                     continue
                 # Get the texture file full path
                 srcFilename = bpy.path.abspath(image.filepath)
+		# Get image filename
+                filename = os.path.basename(image.filepath) 
                 # Get the destination file full path (preserve the extension)
                 fOptions.preserveExtTemp = True
-                filepath = GetFilepath(PathType.TEXTURES, textureName, fOptions)
+                filepath = GetFilepath(PathType.TEXTURES, filename, fOptions)
                 # Check if already exported
                 if not uScene.AddFile(PathType.TEXTURES, textureName, filepath[1]):
                     continue
