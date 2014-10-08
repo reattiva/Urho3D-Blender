@@ -1,5 +1,5 @@
 
-io_mesh_urho v0.4
+io_mesh_urho v0.5
 
 This is a Blender addon that helps you exporting your meshes, armatures, animations and materials to Urho3D.
 It is an amateur work, done with little knowledge of Urho3D and Blender, but I hope it helps.
@@ -27,8 +27,8 @@ of Blender, select 'Toggle System Console' to see the error, copy and email it t
 ------------------------------
 The exporter is located in:
 - Properties panel, by default it is the panel in the right bottom corner, its icon is an horizontal scrollbar
-- Render page (camera icon, it is the forst icon in the panel)
-- towards the bottom of the panel (near Output and Bake sections), it is called 'Urho export'
+- Render page (camera icon, it is the first icon in the panel)
+- Scroll down to 'Urho export'
 
 ================
  Exporter panel
@@ -36,34 +36,40 @@ The exporter is located in:
 
 - Button 'Export'
 This button starts the export process using the current options.
+Options can be minimized/expanded with '+' or '-'.
 - Page icon on the right
 This button shows you the log of the last export process.
+On Windows a console can be toggled.
 
 - 'Output folder'
 This is where the exported files will be created. Click the folder icon on the right to browse and choose 
 the folder.
-- 'Use Urho standard folders'
-Instead of using the folder above, it creates the sub-folder 'Models' to store meshes and animations, the 
-sub-folder 'Textures' to store texture and the sub-folder 'Materials' to store materials.
 - 'Files overwrite'
 By default existing files are not overwritten by the exporter, this option enables overwriting files.
+- 'Use subfolders'
+This option allows to set custom subfolders, relative to the 'Output folder'. By default Urho3D folder hierarchy
+is replicated, with 'Models' to store meshes, animations and material lists, 'Textures' to store textures,
+'Materials' to store materials, 'Scenes' to store 'scene' prefabs and 'Objects' to store 'node' prefabs.
 
 - Blank page icon on the right
-Restore the default options.
+Restore the default options ('factory' settings).
 - Objects
-Select what objects you want to export:
-  'All' export all the objects in the scene (hidden and moved included).
-  'Only selected' export only the selected objects.
+Select the objects you want to export:
+  'All': export all the objects in the scene (hidden and moved included).
+  'Only selected': export only the selected objects.
 - Origin
 Set the meshes origin:
-  'Global' the origin of all the meshes will be the Blender global origin (the center of the grid).
-  'Local' for each mesh the origin will be the object center (little orange dot).
+  'Global': the origin of all the meshes will be the Blender global origin (the center of the grid), meshes are kept in place.
+  'Local': for each mesh the origin will be the object center (little orange dot), mesh is moved to (0,0,0).
+- Front view
+Allows to alter the rotation of the models at export.
 - Scale
 Apply a scale transformation on the object exported.
-- Apply Modifier
+- Apply Modifiers
 If an object has some modifiers stacked, apply them to the mesh before exporting (with Preview or Render settings).
 - Select vertices with errors
-If a vertex has an error (missing element, invalid UV...), when the exporting is done go to Edit mode and select it.
+If a vertex has an error (missing element, invalid UV...), toggle List of errors just after export failure and select one of the errors.
+This puts the object in Edit mode and selects the vertices at fault.
 - Force missing elements
 Vertices can have different elements (position, normal, UV, bone weight), when you export a mesh you can choose 
 which elements you want to export (see Geometries below). If a vertex in the mesh does not have an element selected
@@ -74,22 +80,26 @@ Merge all the objects exported in one Urho model (with different geometries).
 - One vertex buffer per object
 Split each object into its own vertex buffer. If we can use a 16 bits index (instead of 32) when we use a buffer per
 object, then this option is automatically selected.
+- Optimize indices
+Try to sort triangles in the index buffer to gain an optimal use of the hardware vertices cache. In other words, this
+option can speed up the rendering of the mesh. It can be very slow (5 minutes for 30K smooth vertices on an average pc),
+so you should preferably disable this feature when prototyping.
 - Use LODs
 Export each 'Level Of Details' (LOD) present for each object (see LOD below).
   - Strict LODs
   If ON, the LOD will probably have new vertices and your LOD will be accurate as you see it in Blender. 
-  If OFF, the LOD will try to use vertices of the first LOD and you could see some acceptable distorsions caused by 
+  If OFF, the LOD will try to use vertices of the first LOD and you could see some acceptable distortions caused by 
   slightly off normals.
-- Optimize indices
-Try to sort triangles in the index buffer to gain an optimal use of the hardware vertices cache. In other words, this
-option can speed up the rendering of the mesh. It can be very slow (5 minutes for 30K smooth vertices on an average pc).
 
 - Skeletons
 Export the object armature (skeleton).
-  - Derigify
-  Try to remove the control bones (.ORG) from the Rigify armature and keeps only the deform bones. (Not fully tested)
+Suboptions allow to selectively remove bones from the export:
+  - Derigify: Try to remove the control bones (.ORG) from the Rigify armature and keeps only the deform bones. (Not fully tested)
+  - Only deform bones: skip bones (and their children) for which 'Deform' property is false in Properties > Bone
+  (these are bones that don't deform geometry)
+  - Only visible bones: skip bones (and their children) for which Armature layer visibility (in Properties > Data > Layers) is not active
 - Animations
-Export the armature animations. It requires skeleton.
+Export the armature animations. Only available when 'Skeletons' option is checked.
   'Timeline'
   'All tracks (not muted)'
   'All Strips'
@@ -103,10 +113,10 @@ Export the armature animations. It requires skeleton.
 Here you can select what vertex data to export:
   - Position: export vertices positions
   - Normal: export vertices normals
-  - UV, UV2: export vertices UV coordinates (see UV below)
+  - UV, UV2: export vertices UV coordinates (see 'UV' section below)
   - Tangent: export vertices tangents
-  - Weights: export vertices bones weights
-  - Color, Alpha: export vertices colors (see Colors below)
+  - Weights: export vertices bones weights (see 'Weights' section below for troubleshooting)
+  - Color, Alpha: export vertices colors (see 'Colors' section below)
 - Morphs
 Export not muted shape keys (Morphs):
   - Normal: export morphed vertices normals
@@ -114,19 +124,36 @@ Export not muted shape keys (Morphs):
 - Export materials
 Export the object materials (see Materials below).
   - Materials text list: in the models folder create a text file with the same name of the model, inside there is
-    the list of the material files exported that are used by the model.
-- Copy textures  
+    the list of the material files exported that are used by the model. This file is used by Urho3D Editor to retrieve the materials.
+- Copy textures
 Copy the textures used by the objects materials to the output folder. Sometimes this does not work, especially when
 the images are embedded in the blend file are no format was specified for them.
+- Export Urho Prefabs: see 'Prefabs' section below
+
 
 =====
  LOD
 =====
 To create a LOD: append to the object name "_LOD00.0" (for example "house_LOD00.0"), duplicate the object, rename it
 changing the number after '_LOD' with the distance up to this LOD is visible (for example "house_LOD00.0"), reduce its
-vertices (you can use the decimator modifier), repeat these two steps until you have the desired number of LODs.
+vertices (you can use the 'Decimate' modifier), repeat these two steps until you have the desired number of LODs.
 You can use float or integer numbers, it is important that the numbers are right aligned in the object names.
 For example: house_LOD005, house_LOD010, house_LOD100... but not: house_LOD5, house_LOD10, house_LOD100...
+
+=========
+ Weights
+=========
+Issues with weights ('element mask' errors reported in the List of errors when 'Select vertices with errors' is enabled)
+might show up when:
+  - some vertices are not weighted (skinning issue)
+  Fix: redo the skinning for the vertices at fault
+  - 'Vertex Groups' and bones are mismatching. This can occur when:
+      - a bone has been deleted and its 'Vertex Group' has not been reassigned to remaining bones. This is a skinning issue.
+      Fix: reassign 'Vertex Group' (in Properties > Object Data), manually or using Set Parent To Armature Deform With Automatic Weight.
+      - a vertex is weighted exclusively to bones that have been removed from export (using one of the 'Skeletons' suboptions).
+      Fix:
+          - choose another 'Skeletons' suboption or modify Armature layer visibility to include more bones at export.
+          - reassign 'Vertex Group' (in Properties > Object Data) so that each vertex is weighted to at least one remaining bone.
 
 =====
  UV
@@ -134,7 +161,7 @@ For example: house_LOD005, house_LOD010, house_LOD100... but not: house_LOD5, ho
 To export UV you need an UV map, you can see the list in the Data page of the current selected object.
 The Urho MDL format supports two sets of UV coordinates. You can specify what maps to use by appending "_UV1" or
 "_UV2" to the layer name. These suffixes can be used together but also alone, if they are missing the first used
-layer will be choosen.
+layer will be chosen.
 If the exporter reports some "Invalid UV" this means that some triangles of the mesh are mapped in the UV map to
 triangles with an area null or too small. You need to increase the area in the UV map, you can set the option
 'Select vertices with errors' to find these triangles.
@@ -145,7 +172,7 @@ triangles with an area null or too small. You need to increase the area in the U
 To export vertex colors you need an Color map, you can see the list in the Data page of the current selected object.
 Blender colors do not support have alpha, so if you need alpha you need two Color maps, one for the color and one for
 the alpha. You need to specify these maps by appending "_RGB" and "_ALPHA" respectively to the layer name. These
-suffixes can be used together but also alone, if they are missing the first layer will be choosen for RGB only.
+suffixes can be used together but also alone, if they are missing the first layer will be chosen for RGB only.
 For the alpha color layer use a scale of grey (black=transparent, white=opaque), starting from black or white you can
 use the Value slider (V in HSV) to easy change a greyscale color.
 
@@ -156,19 +183,20 @@ The exporter will try to generate Urho3D materials that are similar to what you 
 exact same but at least you have a starting point.
 This feature works only with the 'Blender Render' engine not Cycles. It will probably need some corrections.
 
-This is how a Blender material option (on the left) is converted to a Urho3D material option (on the right):
+This is how a Blender material setting (on the left) is converted to a Urho3D material parameter (on the right):
 
 --- Blender Material ---
-Diffuse.Color * Diffuse.Intesity       = MatDiffColor rgb
+Diffuse.Color * Diffuse.Intensity       = MatDiffColor rgb
 Transparency.Alpha [value if enabled]  = MatDiffColor alpha
-Specular.Color * Specular.Intesity     = MatSpecColor rgb
+Transparency.Mask = add 'Mask' to technique when Transparency.Alpha is enabled
+Specular.Color * Specular.Intensity     = MatSpecColor rgb
 Specular.Hardness                      = MatSpecColor power
 
 --- Blender Object Data ---
 Normals.DoubleSided [if true]          = set material 'cull' and 'shadowcull' to 'none' (=double sided material)
 
-Note: the double sided option is true by default in Blender and so will be the materials exported. To manually remove
-double side from a XML material you can simply delete the 'cull' and 'shadowcull' lines.
+Note: the 'Double Sided' option is true by default in Blender when creating a new material, so don't forget to turn it off
+unless necessary.
 
 --- Blender Textures ---
 Influence.Diffuse.Color [if enabled]   = diffuse  texture and add 'Diff'     to technique
@@ -193,6 +221,33 @@ UV Map name.
 It is simpler to use '_AMBIENTLIGHT' because many techniques are already present in Urho3D, you only need to add 
 a Zone in your scene, its Ambient Color will modulate the light map.
 
+=========
+ Prefabs
+=========
+Prefabs allow to export Urho3D 'Scenes' and 'Objects'.
+They are the equivalent of AssetImporter's 'node' and 'scene' commands.
 
+--- Individual Prefabs ---
+Output one prefab per exported object. Use this option when merging objects at export.
+Each xml file is named according to its object's name, except when 'Merge objects' option is enabled (xml file is then named
+according to the selected object's name).
 
+--- One Collective ---
+Create one unic/global prefab containing every exported objects, while retaining hierarchy. An empty root node holds the objects.
+The xml file is named according to the scene's name.
+Note that this option is not available when 'Merge objects' is enabled.
 
+--- Scene Prefab ---
+Same content as 'One Collective', but outputs a Urho3D xml scene (with Octree, PhysicsWorld, DebugRenderer and Light).
+The xml file is named according to the scene's name.
+
+--- Physics ---
+Select what physics components to create for the prefabs:
+  - No physics: do not export physics at all.
+  - Individual: export Urho3D physics components (PhysicsWorld, RigidBodies and CollisionShapes).
+  - Global: expects a 'Physics.mdl' model as TriangleMesh shape. Useful when using a simplified geometry for the whole scene.
+
+--- CollisionShape ---
+There are 2 ways to set the CollisionShape to use for the exported objects:
+  - switch the rendering engine to 'Blender Game', enable 'Collision Bounds' in Properties > Physics and then select your shape
+  - select a 'CollisionShape' in the Export panel: this shape is used when 'Merge objects' option is enabled or when 'Collision Bounds' is disabled.

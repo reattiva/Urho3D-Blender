@@ -8,6 +8,7 @@ from .utils import PathType, GetFilepath, CheckFilepath, \
                    WriteXmlFile
 
 from xml.etree import ElementTree as ET
+from mathutils import Vector
 import bpy
 import os
 import logging
@@ -29,6 +30,8 @@ class SOptions:
         self.individualPhysics = False
         self.globalPhysics = False
         self.mergeObjects = False
+        self.shape = None
+        self.shapeItems = None
 
 
 class UrhoSceneMaterial:
@@ -58,6 +61,8 @@ class UrhoSceneModel:
         self.type = None
         # List of UrhoSceneMaterial
         self.materialsList = []
+        # Model bounding box
+        self.boundingBox = None
 
     def Load(self, uExportData, uModel, objectName):
         self.name = uModel.name
@@ -77,6 +82,8 @@ class UrhoSceneModel:
             uSceneMaterial = UrhoSceneMaterial()
             uSceneMaterial.Load(uExportData, uGeometry)
             self.materialsList.append(uSceneMaterial)
+
+        self.boundingBox = uModel.boundingBox
 
 
 class UrhoScene:
@@ -245,13 +252,29 @@ def IndividualPrefabXml(uScene, uSceneModel, sOptions):
     materialElem.set("value", "Material" + materials)
 
     if not sOptions.noPhysics:
+        #Use model's bounding box to compute CollisionShape's size and offset
+        obj = bpy.data.objects[uSceneModel.name]
+        physicsSettings = [sOptions.shape] #tData.physicsSettings = [sOptions.shape, obj.game.physics_type, obj.game.mass, obj.game.radius, obj.game.velocity_min, obj.game.velocity_max, obj.game.collision_group, obj.game.collision_mask, obj.game.use_ghost] **************************************
+        shapeType = physicsSettings[0]
+        bbox = uSceneModel.boundingBox
+        #Size
+        x = bbox.max[0] - bbox.min[0]
+        y = bbox.max[1] - bbox.min[1]
+        z = bbox.max[2] - bbox.min[2]
+        shapeSize = Vector((x, y, z))
+        #Offset
+        offsetX = bbox.max[0] - x / 2
+        offsetY = bbox.max[1] - y / 2
+        offsetZ = bbox.max[2] - z / 2
+        shapeOffset = Vector((offsetX, offsetY, offsetZ))
+
         bodyElem = ET.SubElement(rootNodeElem, "component")
         bodyElem.set("type", "RigidBody")
         bodyElem.set("id", "{:d}".format(nodeID+1))
 
         collisionLayerElem = ET.SubElement(bodyElem, "attribute")
         collisionLayerElem.set("name", "Collision Layer")
-        collisionLayerElem.set("value", FloatToString(2))
+        collisionLayerElem.set("value", "2")
 
         gravityElem = ET.SubElement(bodyElem, "attribute")
         gravityElem.set("name", "Use Gravity")
@@ -263,11 +286,21 @@ def IndividualPrefabXml(uScene, uSceneModel, sOptions):
 
         shapeTypeElem = ET.SubElement(shapeElem, "attribute")
         shapeTypeElem.set("name", "Shape Type")
-        shapeTypeElem.set("value", "TriangleMesh")
+        shapeTypeElem.set("value", shapeType)
 
-        physicsModelElem = ET.SubElement(shapeElem, "attribute")
-        physicsModelElem.set("name", "Model")
-        physicsModelElem.set("value", "Model;" + modelFile)
+        if shapeType == "TriangleMesh":
+            physicsModelElem = ET.SubElement(shapeElem, "attribute")
+            physicsModelElem.set("name", "Model")
+            physicsModelElem.set("value", "Model;" + modelFile)
+
+        else:
+            shapeSizeElem = ET.SubElement(shapeElem, "attribute")
+            shapeSizeElem.set("name", "Size")
+            shapeSizeElem.set("value", Vector3ToString(shapeSize))
+
+            shapeOffsetElem = ET.SubElement(shapeElem, "attribute")
+            shapeOffsetElem.set("name", "Offset Position")
+            shapeOffsetElem.set("value", Vector3ToString(shapeOffset))
 
     return rootNodeElem
 
@@ -413,6 +446,27 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         compoID += 1
 
         if sOptions.individualPhysics:
+            #Use model's bounding box to compute CollisionShape's size and offset
+            obj = bpy.data.objects[modelNode]
+            physicsSettings = [sOptions.shape] #tData.physicsSettings = [sOptions.shape, obj.game.physics_type, obj.game.mass, obj.game.radius, obj.game.velocity_min, obj.game.velocity_max, obj.game.collision_group, obj.game.collision_mask, obj.game.use_ghost] **************************************
+            shapeType = physicsSettings[0]
+            if not sOptions.mergeObjects and obj.game.use_collision_bounds:
+                for shapeItems in sOptions.shapeItems:
+                    if shapeItems[0] == obj.game.collision_bounds_type:
+                        shapeType = shapeItems[1]
+                        break
+            bbox = uSceneModel.boundingBox
+            #Size
+            x = bbox.max[0] - bbox.min[0]
+            y = bbox.max[1] - bbox.min[1]
+            z = bbox.max[2] - bbox.min[2]
+            shapeSize = Vector((x, y, z))
+            #Offset
+            offsetX = bbox.max[0] - x / 2
+            offsetY = bbox.max[1] - y / 2
+            offsetZ = bbox.max[2] - z / 2
+            shapeOffset = Vector((offsetX, offsetY, offsetZ))
+
             a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
             a["{:d}".format(m)].set("type", "RigidBody")
             a["{:d}".format(m)].set("id", "{:d}".format(compoID))
@@ -420,7 +474,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
 
             a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)], "attribute")
             a["{:d}".format(m)].set("name", "Collision Layer")
-            a["{:d}".format(m)].set("value", "{:f}".format(2))
+            a["{:d}".format(m)].set("value", "2")
             m += 1
 
             a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
@@ -435,12 +489,24 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
 
             a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)] , "attribute")
             a["{:d}".format(m)].set("name", "Shape Type")
-            a["{:d}".format(m)].set("value", "TriangleMesh")
+            a["{:d}".format(m)].set("value", shapeType)
             m += 1
 
-            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
-            a["{:d}".format(m)].set("name", "Model")
-            a["{:d}".format(m)].set("value", "Model;" + modelFile)
+            if shapeType == "TriangleMesh":
+                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
+                a["{:d}".format(m)].set("name", "Model")
+                a["{:d}".format(m)].set("value", "Model;" + modelFile)
+
+            else:
+                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)] , "attribute")
+                a["{:d}".format(m)].set("name", "Size")
+                a["{:d}".format(m)].set("value", Vector3ToString(shapeSize))
+                m += 1
+
+                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-3)] , "attribute")
+                a["{:d}".format(m)].set("name", "Offset Position")
+                a["{:d}".format(m)].set("value", Vector3ToString(shapeOffset))
+                m += 1
 
             compoID += 2
 
