@@ -1313,10 +1313,11 @@ def ExecuteUrhoExport(context):
                 # Copy or unpack the texture
                 if settings.textures and CheckFilepath(filepath[0], fOptions):
                     if image.packed_file:
-                        log.info( "Unpacking texture {:s}".format(filepath[1]) )
+                        format = str(context.scene.render.image_settings.color_mode)
+                        log.info( "Unpacking {:s} texture {:s}".format(format, filepath[1]) )
                         image.save_render(filepath[0])
                     elif not os.path.exists(srcFilename):
-                        log.error( "Miissing source texture {:s}".format(srcFilename) )
+                        log.error( "Missing source texture {:s}".format(srcFilename) )
                     else:
                         try:
                             log.info( "Copying texture {:s}".format(filepath[1]) )
