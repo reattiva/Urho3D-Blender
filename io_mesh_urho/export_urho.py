@@ -1186,9 +1186,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         isEmissive = False
         emissiveTexture = None
         
-        technique = "Techniques/NoTexture"
+        technique = "NoTexture"
         if tMaterial.diffuseTexName:
-            technique = "Techniques/Diff"
+            technique = "Diff"
             if tMaterial.normalTexName:
                 technique += "Normal"
             if tMaterial.specularTexName:
