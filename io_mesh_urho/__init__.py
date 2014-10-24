@@ -156,7 +156,7 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
     techniquesPath = StringProperty(
             name = "Default Techniques subpath",
             description = "Techniques subpath (relative to output)",
-            default = "")
+            default = "Techniques")
     texturesPath = StringProperty(
             name = "Default Textures subpath",
             description = "Textures subpath (relative to output)",
