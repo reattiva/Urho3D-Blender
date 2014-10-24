@@ -269,12 +269,10 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             items.append( (error, error, "") )
         return items
 
-    # Set all the export settings back to their default values
+    # Revert all the export settings back to their default values
     def reset(self, context): 
         
         addonPrefs = context.user_preferences.addons[__name__].preferences
-        if not self.outputPath:
-            self.outputPath = addonPrefs.outputPath
 
         self.minimize = False
         self.showDirs = False
@@ -333,6 +331,23 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.scenePrefab = False
         self.physics = 'INDIVIDUAL'
         self.shape = 'TRIANGLEMESH'
+
+    # Revert the output paths back to their default values
+    def reset_paths(self, context, forced):
+
+        addonPrefs = context.user_preferences.addons[__name__].preferences
+
+        if forced or (not self.outputPath and addonPrefs.outputPath):
+            self.outputPath = addonPrefs.outputPath
+
+        if forced or (not self.modelsPath and addonPrefs.modelsPath):
+            self.modelsPath = addonPrefs.modelsPath
+            self.animationsPath = addonPrefs.animationsPath
+            self.materialsPath = addonPrefs.materialsPath
+            self.techniquesPath = addonPrefs.techniquesPath
+            self.texturesPath = addonPrefs.texturesPath
+            self.objectsPath = addonPrefs.objectsPath
+            self.scenesPath = addonPrefs.scenesPath
 
     # --- Accessory ---
 
@@ -690,17 +705,37 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     actionsGlobalOrigin = BoolProperty(name = "Actions global origin", default = False)
     
 
-# Reset settings button    
+# Reset settings button
 class UrhoExportResetOperator(bpy.types.Operator):
     """ Reset export settings """
-    
+
     bl_idname = "urho.exportreset"
-    bl_label = "Reset"
- 
+    bl_label = "Revert settings to default"
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_confirm(self, event)
+
     def execute(self, context):
         context.scene.urho_exportsettings.reset(context)
         return {'FINISHED'}
-     
+
+
+# Reset output paths button
+class UrhoExportResetPathsOperator(bpy.types.Operator):
+    """ Reset paths """
+
+    bl_idname = "urho.exportresetpaths"
+    bl_label = "Revert paths to default"
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_confirm(self, event)
+
+    def execute(self, context):
+        context.scene.urho_exportsettings.reset_paths(context, True)
+        return {'FINISHED'}
+
 
 # View log button
 class UrhoReportDialog(bpy.types.Operator):
@@ -797,8 +832,11 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         if settings.minimize:
             return
 
-        layout.label("Output:")
-        box = layout.box()      
+        row = layout.row()
+        row.label("Output:")
+        row.operator("urho.exportresetpaths", text="", icon='LIBRARY_DATA_DIRECT')
+
+        box = layout.box()
 
         box.label("Output folder:")
         box.prop(settings, "outputPath")
@@ -817,9 +855,9 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             dbox.prop(settings, "objectsPath")
             dbox.prop(settings, "scenesPath")
 
-        row = layout.row()    
+        row = layout.row()
         row.label("Settings:")
-        row.operator("urho.exportreset", text="", icon='FILE')
+        row.operator("urho.exportreset", text="", icon='LIBRARY_DATA_DIRECT')
         
         box = layout.box()
 
@@ -990,16 +1028,7 @@ def PostLoad(dummy):
     settings = bpy.context.scene.urho_exportsettings
     settings.errorsMem.Clear()
     settings.updatingProperties = False
-    if not settings.modelsPath and addonPrefs.modelsPath:
-        settings.modelsPath = addonPrefs.modelsPath
-        settings.animationsPath = addonPrefs.animationsPath
-        settings.materialsPath = addonPrefs.materialsPath
-        settings.techniquesPath = addonPrefs.techniquesPath
-        settings.texturesPath = addonPrefs.texturesPath
-        settings.objectsPath = addonPrefs.objectsPath
-        settings.scenesPath = addonPrefs.scenesPath
-    if not settings.modelsPath and addonPrefs.outputPath:
-        settings.outputPath = addonPrefs.outputPath
+    settings.reset_paths(bpy.context, False)
 
 
 #--------------------
@@ -1017,7 +1046,8 @@ def register():
     bpy.utils.register_class(UrhoExportSettings)
     bpy.utils.register_class(UrhoExportOperator)
     bpy.utils.register_class(UrhoToggleConsoleOperator)
-    bpy.utils.register_class(UrhoExportResetOperator) 
+    bpy.utils.register_class(UrhoExportResetOperator)
+    bpy.utils.register_class(UrhoExportResetPathsOperator)
     bpy.utils.register_class(UrhoExportRenderPanel)
     bpy.utils.register_class(UrhoReportDialog)
     
@@ -1043,9 +1073,10 @@ def unregister():
     
     bpy.utils.unregister_class(UrhoAddonPreferences)
     bpy.utils.unregister_class(UrhoExportSettings)
-    bpy.utils.unregister_class(UrhoExportOperator) 
+    bpy.utils.unregister_class(UrhoExportOperator)
     bpy.utils.unregister_class(UrhoToggleConsoleOperator)
-    bpy.utils.unregister_class(UrhoExportResetOperator) 
+    bpy.utils.unregister_class(UrhoExportResetOperator)
+    bpy.utils.unregister_class(UrhoExportResetPathsOperator)    
     bpy.utils.unregister_class(UrhoExportRenderPanel)
     bpy.utils.unregister_class(UrhoReportDialog)
     
