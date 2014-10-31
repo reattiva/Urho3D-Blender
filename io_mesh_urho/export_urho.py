@@ -1186,9 +1186,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         isEmissive = False
         emissiveTexture = None
         
-        technique = "NoTexture"
+        technique = "Techniques/NoTexture"
         if tMaterial.diffuseTexName:
-            technique = "Diff"
+            technique = "Techniques/Diff"
             # Lightmap cannot paired with other textures except Diffuse
             if tMaterial.lightmapTexName:
                 technique += "LightMap"
