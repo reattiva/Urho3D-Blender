@@ -1189,22 +1189,24 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         technique = "NoTexture"
         if tMaterial.diffuseTexName:
             technique = "Diff"
-            if tMaterial.normalTexName:
-                technique += "Normal"
-            if tMaterial.specularTexName:
-                technique += "Spec"
-            # Emission map, light map and AO (Ambient light map) use the same
-            # emission texture slot, we have to pick one
-            if tMaterial.emitTexName:
-                technique += "Emissive"
-                emissiveTexture = tMaterial.emitTexName
-                isEmissive = True
-            elif tMaterial.ambientLightTexName:
-                technique += "AO"
-                emissiveTexture = tMaterial.ambientLightTexName
-            elif tMaterial.lightmapTexName:
+            # Lightmap cannot paired with other textures except Diffuse
+            if tMaterial.lightmapTexName:
                 technique += "LightMap"
                 emissiveTexture = tMaterial.lightmapTexName
+            else:
+                if tMaterial.normalTexName:
+                    technique += "Normal"
+                if tMaterial.specularTexName:
+                    technique += "Spec"
+                # Emission map, light map and AO (Ambient light map) use the same
+                # emission texture slot, we have to pick one
+                if tMaterial.emitTexName:
+                    technique += "Emissive"
+                    emissiveTexture = tMaterial.emitTexName
+                    isEmissive = True
+                elif tMaterial.ambientLightTexName:
+                    technique += "AO"
+                    emissiveTexture = tMaterial.ambientLightTexName
         if tMaterial.opacity:
             technique += "Alpha";
             if tMaterial.alphaMask:
