@@ -48,6 +48,7 @@ LINE_LIST           = 1
             
 # Max number of bones supported by HW skinning
 MAX_SKIN_MATRICES   = 64
+BONES_PER_VERTEX    = 4
 
 #--------------------
 # Float comparison
@@ -127,70 +128,93 @@ class BoundingBox:
         if point.z > self.max.z:
             self.max.z = point.z
 
-# Exception raised when we add a vertex with more or less elements than
-# the vertex buffer.
-class MaskError(Exception):
-    pass
+
+# Exception for a vertex with more or less elements than its vertex buffer
+class VertexMaskError(Exception):
+
+    def __init__(self, oldMask, disruptMask):
+        self.oldMask = oldMask
+        self.disruptMask = disruptMask
+        self.elements = { ELEMENT_POSITION: "Position",
+                          ELEMENT_NORMAL: "Normal",
+                          ELEMENT_COLOR: "Color",
+                          ELEMENT_UV1: "UV1",
+                          ELEMENT_UV2: "UV2",
+                          ELEMENT_CUBE_UV1: "Cube UV1",
+                          ELEMENT_CUBE_UV2: "Cube UV2",
+                          ELEMENT_TANGENT: "Tangent",
+                          ELEMENT_BWEIGHTS: "Blend weights",
+                          ELEMENT_BINDICES: "Blend indices" }
+
+    def __str__(self):
+        diff = self.oldMask ^ self.disruptMask
+        names = [name for mask,name in self.elements.items() if (mask & diff)]
+        txt = "{:04X} vs {:04X}".format(self.oldMask, self.disruptMask)
+        txt += "\n differences: {:s}".format(", ".join(names))
+        return txt
+
+# Exception for a keyframe with more or less elements than its track
+class FrameMaskError(Exception):
+
+    def __init__(self, oldMask, disruptMask, newMask):
+        self.oldMask = oldMask
+        self.disruptMask = disruptMask
+        self.newMask = newMask
+        self.elements = { TRACK_POSITION: "Position",
+                          TRACK_ROTATION: "Rotation",
+                          TRACK_SCALE: "Scale" }
+
+    def __str__(self):
+        diff = self.oldMask ^ self.disruptMask
+        names = [name for mask,name in self.elements.items() if (mask & diff)]
+        txt = "{:04X} AND {:04X} = {:04X}".format(self.oldMask, self.disruptMask, self.newMask)
+        txt += "\n differences: {:s}".format(", ".join(names))
+        return txt
 
 # --- Model classes ---
 
 class UrhoVertex:
-    def __init__(self, tVertex, uVertexBuffer):
-        # Note: cannot pass elementMask directly because it is immutable
-        mask = 0
+    def __init__(self, tVertex):
+        # Bit mask of elements present
+        self.mask = 0
         # Only used by morphs, original vertex index in the not morphed vertex buffer
         self.index = None 
         # Vertex position: Vector((0.0, 0.0, 0.0)) of floats
         self.pos = tVertex.pos
         if tVertex.pos:
-            mask |= ELEMENT_POSITION
+            self.mask |= ELEMENT_POSITION
         # Vertex normal: Vector((0.0, 0.0, 0.0)) of floats
         self.normal = tVertex.normal
         if tVertex.normal:
-            mask |= ELEMENT_NORMAL
+            self.mask |= ELEMENT_NORMAL
         # Vertex color: (0, 0, 0, 0) of unsigned bytes
         self.color = tVertex.color       
         if tVertex.color:
-            mask |= ELEMENT_COLOR
+            self.mask |= ELEMENT_COLOR
         # Vertex UV texture coordinate: (0.0, 0.0) of floats
         self.uv = tVertex.uv
         if tVertex.uv:
-            mask |= ELEMENT_UV1
+            self.mask |= ELEMENT_UV1
         # Vertex UV2 texture coordinate: (0.0, 0.0) of floats
         self.uv2 = tVertex.uv2
         if tVertex.uv2:
-            mask |= ELEMENT_UV2
+            self.mask |= ELEMENT_UV2
         # Vertex tangent: Vector((0.0, 0.0, 0.0, 0.0)) of floats
         self.tangent = tVertex.tangent
         if tVertex.tangent:
-            mask |= ELEMENT_TANGENT
-        # TODO: move it out of here
-        # List of 4 tuples: bone index (unsigned byte), blend weight (float)
-        self.weights = []
+            self.mask |= ELEMENT_TANGENT
+        # List of tuples: bone index (unsigned byte), blend weight (float)
+        self.weights = [(0, 0.0)] * BONES_PER_VERTEX
         if not tVertex.weights is None:
             # Sort tuples (index, weight) by decreasing weight
             sortedList = sorted(tVertex.weights, key = operator.itemgetter(1), reverse = True)
-            # Sum the first 4 weights
-            totalWeight = sum([t[1] for t in sortedList[:4]])
-            # Keep only the first 4 tuples, normalize weights, add at least 4 tuples
-            for i in range(4):
-                t = (0, 0.0)
-                if totalWeight and i < len(sortedList):
-                    t = sortedList[i]
-                    t = (t[0], t[1] / totalWeight)
-                self.weights.append(t) 
-            mask |= ELEMENT_BLEND
+            sortedList = sortedList[:BONES_PER_VERTEX]
+            # Normalize weights and add to the list
+            totalWeight = sum([t[1] for t in sortedList])
+            for i, t in enumerate(sortedList):
+                self.weights[i] = (t[0], t[1] / totalWeight)
+            self.mask |= ELEMENT_BLEND
 
-        # Update buffer mask
-        if uVertexBuffer.elementMask is None:
-            uVertexBuffer.elementMask = mask
-        elif uVertexBuffer.elementMask != mask:
-            oldMask = uVertexBuffer.elementMask
-            # Update vertex buffer mask only if mask has the same and more bits
-            if (uVertexBuffer.elementMask & mask) == uVertexBuffer.elementMask:
-                uVertexBuffer.elementMask = mask
-            raise MaskError("{:04X} vs {:04X}".format(mask, oldMask))
-    
     # used by the function index() of lists
     def __eq__(self, other):
         return (self.pos == other.pos and self.normal == other.normal and 
@@ -250,6 +274,18 @@ class UrhoVertexBuffer:
         self.morphMaxIndex = None
         # List of UrhoVertex
         self.vertices = []
+
+    # Check if a vertex is compatible with this buffer or has different elements
+    def updateMask(self, vertexMask):
+        # Update buffer mask
+        if self.elementMask is None:
+            self.elementMask = vertexMask
+        elif self.elementMask != vertexMask:
+            oldMask = self.elementMask
+            # Update vertex buffer mask only if mask has the same and more bits
+            if (self.elementMask & vertexMask) == self.elementMask:
+                self.elementMask = vertexMask
+            raise VertexMaskError(oldMask, vertexMask)
 
 class UrhoIndexBuffer:
     def __init__(self):
@@ -338,39 +374,43 @@ class UrhoModel:
 # --- Animation classes ---
 
 class UrhoKeyframe:
-    def __init__(self, tKeyframe, uTrack):
-        # Note: cannot pass mask directly because it is immutable
-        mask = 0
+    def __init__(self, tKeyframe):
+        # Bit mask of elements present
+        self.mask = 0
         # Time position in seconds: float
         self.time = tKeyframe.time
         # Position: Vector((0.0, 0.0, 0.0))
         self.position = tKeyframe.position
         if tKeyframe.position:
-            mask |= TRACK_POSITION
+            self.mask |= TRACK_POSITION
         # Rotation: Quaternion()
         self.rotation = tKeyframe.rotation
         if tKeyframe.rotation:
-            mask |= TRACK_ROTATION
+            self.mask |= TRACK_ROTATION
         # Scale: Vector((0.0, 0.0, 0.0))
         self.scale = tKeyframe.scale
         if tKeyframe.scale:
-            mask |= TRACK_SCALE
-        # Update track mask    
-        if uTrack.mask is None:
-            uTrack.mask = mask
-        elif uTrack.mask != mask:
-            oldMask = uTrack.elementMask
-            uTrack.mask &= mask
-            raise MaskError("{:04X} AND {:04X} = {:04X}".format(oldMask, mask, uTrack.elementMask))
+            self.mask |= TRACK_SCALE
             
 class UrhoTrack:
     def __init__(self):
         # Track name (practically same as the bone name that should be driven)
         self.name = ""
         # Mask of included animation data
-        self.mask = None
+        self.elementMask = None
         # Keyframes
         self.keyframes = []
+
+    # Check if a vertex is compatible with this buffer or has different elements
+    def updateMask(self, keyframeMask):
+        # Update track mask
+        if self.elementMask is None:
+            self.elementMask = keyframeMask
+        elif self.elementMask != keyframeMask:
+            oldMask = self.elementMask
+            # Update the track mask, keep the common denominator
+            self.elementMask &= keyframeMask
+            raise FrameMaskError(oldMask, keyframeMask, self.elementMask)
 
 class UrhoTrigger:
     def __init__(self):
@@ -519,10 +559,10 @@ def UrhoWriteModel(model, filename):
                 fw.writeVector3(vertex.tangent)
                 fw.writeFloat(vertex.tangent.w)
             if mask & ELEMENT_BWEIGHTS:
-                for i in range(4):
+                for i in range(BONES_PER_VERTEX):
                     fw.writeFloat(vertex.weights[i][1])
             if mask & ELEMENT_BINDICES:
-                for i in range(4):
+                for i in range(BONES_PER_VERTEX):
                     fw.writeUByte(vertex.weights[i][0])
 
     # Number of index buffers
@@ -705,7 +745,7 @@ def UrhoWriteTriggers(triggersList, filename, fOptions):
         triggerElem.set("value", str(trigger.data))
 
     WriteXmlFile(triggersElem, filename, fOptions)
-        
+
 
 #--------------------
 # Utils
@@ -713,20 +753,19 @@ def UrhoWriteTriggers(triggersList, filename, fOptions):
 
 # Search for the most complete element mask
 def GetMaxElementMask(indices, vertices):
-    vertexBuffer = UrhoVertexBuffer()
     maxElementMask = 0
     maxElementMaskCount = 0
     for vertexIndex in indices:
-        vertexBuffer.elementMask = None
-        vertex = vertices[vertexIndex]
-        UrhoVertex(vertex, vertexBuffer)
-        count = bin(vertexBuffer.elementMask).count("1")
+        tVertex = vertices[vertexIndex]
+        uVertex = UrhoVertex(tVertex)
+        count = bin(uVertex.mask).count("1")
         if maxElementMaskCount < count:
             maxElementMaskCount = count
-            maxElementMask = vertexBuffer.elementMask
+            maxElementMask = uVertex.mask
     if maxElementMask:
         return maxElementMask
     return None
+
 
 #---------------------------------------
 
@@ -880,14 +919,15 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                 tVertex = tData.verticesList[tVertexIndex]
 
                 # Create a Urho vertex
+                uVertex = UrhoVertex(tVertex)
                 try:
-                    uVertex = UrhoVertex(tVertex, vertexBuffer)
-                except MaskError as e:
+                    vertexBuffer.updateMask(uVertex.mask)
+                except VertexMaskError as e:
                     if not tVertex.blenderIndex is None:
                         errorsIndices = errorsMem.Get("element mask " + str(e), set() )
                         errorsIndices.add(tVertex.blenderIndex)
-                    log.warning("Incompatible vertex element mask in object {:s} ({:s})".format(uModel.name, e))
-                                
+                    log.warning("Incompatible vertex elements in object {:s}, {!s}".format(uModel.name, e))
+
                 # All that this code do is "uVertexIndex = vertexBuffer.vertices.index(uVertex)", but we use
                 # a map to speed up.
             
@@ -927,31 +967,13 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                     uVerticesMapList.append(uVertexIndex)
                     if lodIndex != 0:
                         warningNewVertices = True
-                
+
                 # Populate the 'old tVertex index' to 'new uVertex index' map
                 if not tVertexIndex in indexMap:
                     indexMap[tVertexIndex] = uVertexIndex
                 elif indexMap[tVertexIndex] != uVertexIndex:
                     log.error("Conflict in vertex index map of object {:s}".format(uModel.name))
-                
-                '''    
-                # Limit weights count to 4 and normalize them
-                if (vertexBuffer.elementMask & ELEMENT_BLEND) == ELEMENT_BLEND:
-                    # Sort tuples (index, weight) by decreasing weight
-                    sortedList = sorted(uVertex.weights, key = operator.itemgetter(1), reverse = True)
-                    # Cleat the vertex weights list and delete the old tuples (maybe)
-                    uVertex.weights[:] = []
-                    # Sum the first 4 weights
-                    totalWeight = sum([t[1] for t in sortedList[:4]])
-                    # Keep only the first 4 tuples, map index, normalize weights, add at least 4 tuples
-                    for i in range(4):
-                        t = (0, 0.0)
-                        if i < len(sortedList):
-                            t = sortedList[i]
-                            t = (t[0], t[1] / totalWeight)
-                        uVertex.weights.append(t) 
-                '''
-                
+
                 # Update the model bounding box (common to all geometries)
                 if vertexBuffer.elementMask & ELEMENT_POSITION:
                     uModel.boundingBox.merge(uVertex.pos)
@@ -1119,13 +1141,14 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                     uMorphVertexBuffer.elementMask = guessedElementMasks[uVertexBufferIndex]
                     
                 # Create the morphed vertex
+                uMorphVertex = UrhoVertex(tMorphVertex)
                 try:
-                    uMorphVertex = UrhoVertex(tMorphVertex, uMorphVertexBuffer)
-                except MaskError as e:
+                    uMorphVertexBuffer.updateMask(uMorphVertex.mask)
+                except VertexMaskError as e:
                     if not tVertex.blenderIndex is None:
                         errorsMorphIndices = errorsMem.Get("morph element mask " + str(e), set() )
                         errorsMorphIndices.add(tMorphVertex.blenderIndex)
-                    log.warning("Incompatible vertex element mask in morph {:s} of object {:s} ({:s})"
+                    log.warning("Incompatible vertex elements in morph {:s} of object {:s}, {!s}"
                                 .format(uMorph.name, uModel.name, e))
 
                 # Get the original vertex
@@ -1167,10 +1190,12 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             uTrack.mask = None
             
             for tFrame in tTrack.frames:
+                uKeyframe = UrhoKeyframe(tFrame)
                 try:
-                    uKeyframe = UrhoKeyframe(tFrame, uTrack)
-                except MaskError as e:
-                    log.warning("Incompatible element mask in track {:s} of animation {:s} ({:s})".format(uTrack.name, uAnimation.name, e))
+                    uTrack.updateMask(uKeyframe.mask)
+                except FrameMaskError as e:
+                    log.warning("Incompatible elements in track {:s} of animation {:s}, {!s}"
+                                .format(uTrack.name, uAnimation.name, e))
                 uTrack.keyframes.append(uKeyframe)
 
             # Make sure keyframes are sorted from beginning to end
