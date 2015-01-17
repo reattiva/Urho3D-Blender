@@ -1621,7 +1621,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         # If we are merging and want to have separate materials, add the object name
         mapMaterialName = materialName
         if tOptions.mergeObjects and tOptions.mergeNotMaterials:
-            mapMaterialName = materialName + "---" + meshObj.name
+            mapMaterialName = str(materialName) + "---" + meshObj.name
         # From the material name search for the geometry index, or add it to the map if missing            
         try:
             geometryIndex = materialGeometryMap[mapMaterialName]
@@ -1631,7 +1631,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             newGeometry.materialName = materialName
             geometriesList.append(newGeometry)
             materialGeometryMap[mapMaterialName] = geometryIndex
-            log.info("New Geometry{:d} created for material {:s}".format(geometryIndex, materialName))
+            log.info("New Geometry{:d} created for material {!s}".format(geometryIndex, materialName))
 
         # Get the geometry associated to the material
         geometry = geometriesList[geometryIndex]
@@ -1643,7 +1643,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             tLodLevel.distance = tOptions.lodDistance
             geometry.lodLevels.append(tLodLevel)
             tOptions.lodUpdatedGeometryIndices.add(geometryIndex)
-            log.info("New LOD{:d} created for material {:s}".format(lodLevelIndex, materialName))
+            log.info("New LOD{:d} created for material {!s}".format(lodLevelIndex, materialName))
         else:
             tLodLevel = geometry.lodLevels[-1]
 
