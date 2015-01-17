@@ -825,11 +825,11 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         remappedVertices = set()
         
         # For each LOD level
-        for i, tLodLevel in enumerate(tGeometry.lodLevels):
+        for lodIndex, tLodLevel in enumerate(tGeometry.lodLevels):
             uLodLevel = UrhoLodLevel()
             uGeometry.lodLevels.append(uLodLevel)
             
-            if i == 0 and tLodLevel.distance != 0.0:
+            if lodIndex == 0 and tLodLevel.distance != 0.0:
                 # Note: if we miss a LOD, its range will be covered by the following LOD (which is this one),
                 # this can can overlapping between LODs of different geometries
                 log.error("First LOD of object {:s} Geometry{:d} must have 0.0 distance (found {:.3f})"
@@ -840,13 +840,13 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
 
             # If needed add a new vertex buffer (only for first LOD of a geometry)
             # For remapping to work a geometry and its LODs must use only one buffer
-            if vertexBuffer is None or (i == 0 and not useOneBuffer):
+            if vertexBuffer is None or (lodIndex == 0 and not useOneBuffer):
                 vertexBuffer = UrhoVertexBuffer()
                 uModel.vertexBuffers.append(vertexBuffer)
                 uVerticesMap = {}
 
             # If needed add a new index buffer (only for first LOD of a geometry)
-            if indexBuffer is None or (i == 0 and not useOneBuffer):
+            if indexBuffer is None or (lodIndex == 0 and not useOneBuffer):
                 indexBuffer = UrhoIndexBuffer()
                 uModel.indexBuffers.append(indexBuffer)
                 uLodLevel.startIndex = 0
@@ -859,7 +859,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             uLodLevel.vertexBuffer = len(uModel.vertexBuffers) - 1
             uLodLevel.indexBuffer = len(uModel.indexBuffers) - 1
             print("Geometry{:d} LOD{:d} using: vertex buffer {:d} ({:d}), index buffer {:d} ({:d})"
-                  .format(geomIndex, i, uLodLevel.vertexBuffer, len(tLodLevel.indexSet),
+                  .format(geomIndex, lodIndex, uLodLevel.vertexBuffer, len(tLodLevel.indexSet),
                   uLodLevel.indexBuffer, uLodLevel.countIndex))
             
             # Maps old vertex index to new vertex index in the new Urho buffer
@@ -903,7 +903,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                     uVerticesMap[uVertexHash] = uVerticesMapList
                 
                 uVertexIndex = None
-                if i == 0 or uExportOptions.useStrictLods:
+                if lodIndex == 0 or uExportOptions.useStrictLods:
                     # For each index in the list, get the corresponding vertex and test if it is equal to tVertex.
                     # If Position, Normal and UV are the same, it must be the same vertex, get its index.
                     for ivl in uVerticesMapList:
@@ -925,7 +925,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                     uVertexIndex = len(vertexBuffer.vertices)
                     vertexBuffer.vertices.append(uVertex)
                     uVerticesMapList.append(uVertexIndex)
-                    if i != 0:
+                    if lodIndex != 0:
                         warningNewVertices = True
                 
                 # Populate the 'old tVertex index' to 'new uVertex index' map
@@ -957,7 +957,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                     uModel.boundingBox.merge(uVertex.pos)
 
             if warningNewVertices:
-                log.warning("LOD {:d} of object {:s} Geometry{:d} has new vertices.".format(i, uModel.name, geomIndex))
+                log.warning("LOD {:d} of object {:s} Geometry{:d} has new vertices."
+                            .format(lodIndex, uModel.name, geomIndex))
                             
             # Add the local vertex map to the global map
             for oldIndex, newIndex in indexMap.items():
@@ -980,12 +981,12 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                     uVertexIndex = indexMap[tVertexIndex]
                     indexBuffer.indexes.append(uVertexIndex)
                     # Update geometry center (only for the first LOD)
-                    if (i == 0) and (vertexBuffer.elementMask & ELEMENT_POSITION):
+                    if (lodIndex == 0) and (vertexBuffer.elementMask & ELEMENT_POSITION):
                         centerCount += 1
                         center += vertexBuffer.vertices[uVertexIndex].pos;
 
             # Update geometry center (only for the first LOD)
-            if i == 0 and centerCount:
+            if lodIndex == 0 and centerCount:
                 uGeometry.center = center / centerCount;
                         
             # If this geometry has bone weights but the number of total bones is over the limit 
@@ -1001,7 +1002,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                         continue
                     remappedVertices.add(uVertexIndex)
                     vertex = vertexBuffer.vertices[uVertexIndex]
-                    for i, (boneIndex, weight) in enumerate(vertex.weights):
+                    for j, (boneIndex, weight) in enumerate(vertex.weights):
                         if weight < EPSILON:
                             continue
                         # Search if the bone is already present in the map
@@ -1018,7 +1019,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                                 newBoneIndex = 0
                                 weight = 0.0
                         # Change from the global bone index to the local bone index
-                        vertex.weights[i] = (newBoneIndex, weight)
+                        vertex.weights[j] = (newBoneIndex, weight)
                 bonesIn = len(uModel.bones)
                 bonesOut = len(uGeometry.boneMap)
                 bonesFree = MAX_SKIN_MATRICES - bonesOut

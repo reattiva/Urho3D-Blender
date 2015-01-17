@@ -38,7 +38,7 @@ DEBUG = 0
 import bpy
 import bmesh
 import math
-import time
+import time as ostime
 from mathutils import Vector, Matrix, Quaternion, Color
 from collections import OrderedDict
 import os
@@ -696,7 +696,7 @@ def OptimizeIndices(lodLevel):
     progressCur = 0
     progressTot = 0.01 * len(oldTriangles)
 
-    if DEBUG: ttt = time.time() #!TIME
+    if DEBUG: ttt = ostime.time() #!TIME
 
     # While there still are unsorted triangles
     while oldTriangles:
@@ -761,7 +761,7 @@ def OptimizeIndices(lodLevel):
         # Finally erase the extra vertices
         vertexCache[:] = vertexCache[:VERTEX_CACHE_SIZE]
 
-    if DEBUG: print("[TIME2] {:.4f}".format(time.time() - ttt) ) #!TIME
+    if DEBUG: print("[TIME2] {:.4f}".format(ostime.time() - ttt) ) #!TIME
 
     # Rewrite the index data now
     lodLevel.triangleList = newTriangles
@@ -1312,11 +1312,11 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     boneSet.remove(bone)
             # Check if any bones used by actions is missing in the map
             for bone in boneSet:
-                log.warning("Action group(bone) {:s} is not in the skeleton".format(bone))
+                log.warning("Action group or bone '{:s}' not present in the skeleton".format(bone))
         else:
             # Get all the names of the bones in the map
             bones = bonesMap.keys()
-	
+        
         if not bones:
             log.warning("No bones for animation {:s}".format(object.name))
             continue
@@ -1347,11 +1347,12 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             # For each frame
             for time in range( startframe, endframe, scene.frame_step):
                 
-                if (progressCur % 10) == 0:
+                if (progressCur % 40) == 0:
                     print("{:.3f}%\r".format(progressCur / progressTot), end='' )
                 progressCur += 1
                 
-                # Set frame
+                # Set frame (TODO: this is very slow, try to advance only the armature)
+                # (rna_Scene_frame_set, BKE_scene_update_for_newframe, BKE_animsys_evaluate_animdata)
                 scene.frame_set(time)
             
                 # This matrix is referred to the armature (object space)
@@ -2147,7 +2148,7 @@ def Scan(context, tDataList, errorsMem, tOptions):
 if __name__ == "__main__":
 
     print("------------------------------------------------------")
-    startTime = time.time()
+    startTime = ostime.time()
 
     tDataList = []
     tOptions = TOptions()
@@ -2156,7 +2157,7 @@ if __name__ == "__main__":
     if tDataList:
         PrintAll(tDataList[0])
                 
-    print("Executed in {:.4f} sec".format(time.time() - startTime) )
+    print("Executed in {:.4f} sec".format(ostime.time() - startTime) )
     print("------------------------------------------------------")
     
     
