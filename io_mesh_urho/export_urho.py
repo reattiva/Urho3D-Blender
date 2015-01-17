@@ -854,6 +854,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             # Set lod vertex and index buffers
             uLodLevel.vertexBuffer = len(uModel.vertexBuffers) - 1
             uLodLevel.indexBuffer = len(uModel.indexBuffers) - 1
+            print("Geometry{:d} LOD{:d} using: vertex buffer {:d} ({:d}), index buffer {:d} ({:d})"
+                  .format(geomIndex, i, uLodLevel.vertexBuffer, len(tLodLevel.indexSet),
+                  uLodLevel.indexBuffer, uLodLevel.countIndex))
             
             # Maps old vertex index to new vertex index in the new Urho buffer
             indexMap = {}
@@ -987,9 +990,16 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             # limit, to a local, in this geometry, bone index within the limit.
             if len(uModel.bones) > MAX_SKIN_MATRICES and (vertexBuffer.elementMask & ELEMENT_BLEND) == ELEMENT_BLEND:
                 discardedBones = defaultdict(float)
+                # Pass each vertex of the geometry only one time, and change the bone indices to the remapped ones.
+                # Be sure to not pass it again once its bones are remapped.
+                uVertexIndices = indexMap.values()
+                assert(len(uVertexIndices) == len(set(uVertexIndices)) )
                 # For each vertex in the buffer
-                for vertex in vertexBuffer.vertices:
+                for uVertexIndex in uVertexIndices:
+                    vertex = vertexBuffer.vertices[uVertexIndex]
                     for i, (boneIndex, weight) in enumerate(vertex.weights):
+                        if weight < EPSILON:
+                            continue
                         # Search if the bone is already present in the map
                         try:
                             newBoneIndex = uGeometry.boneMap.index(boneIndex)
@@ -1005,11 +1015,19 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                                 weight = 0.0
                         # Change from the global bone index to the local bone index
                         vertex.weights[i] = (newBoneIndex, weight)
+                bonesIn = len(uModel.bones)
+                bonesOut = len(uGeometry.boneMap)
+                bonesFree = MAX_SKIN_MATRICES - bonesOut
+                print("Geometry{:d} remapping from {:d} bones to {:d} ({:d} free)"
+                      .format(geomIndex, bonesIn, bonesOut, bonesFree))
                 if discardedBones:
                     text = "Too many bones (+{:d}) in object {:s}: ".format(len(discardedBones), uModel.name)
                     for boneName in sorted(discardedBones, key=discardedBones.get, reverse=False):
                         text += " {:s}={:.2f}".format(boneName, discardedBones[boneName])
                     log.error(text)
+            #LOD loop
+        #Geometry loop
+    #
 
     if tData.geometriesList and uModel.boundingBox.min is None:
         uModel.boundingBox.min = Vector((0.0, 0.0, 0.0))
