@@ -709,8 +709,8 @@ def UrhoWriteAnimation(animation, filename):
         fw.writeAsciiStr(track.name)
         fw.writeUByte(0)
         # Mask of included animation data
-        mask = track.mask
-        fw.writeUByte(track.mask)
+        mask = track.elementMask
+        fw.writeUByte(track.elementMask)
         
         # Number of tracks
         fw.writeUInt(len(track.keyframes))
@@ -1187,7 +1187,6 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         for tTrack in tAnimation.tracks:
             uTrack = UrhoTrack()
             uTrack.name = tTrack.name
-            uTrack.mask = None
             
             for tFrame in tTrack.frames:
                 uKeyframe = UrhoKeyframe(tFrame)
@@ -1202,7 +1201,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             uTrack.keyframes.sort(key = operator.attrgetter('time'))
 
             # Add only tracks with keyframes
-            if uTrack.keyframes and uTrack.mask:
+            if uTrack.keyframes and uTrack.elementMask:
                 uAnimation.tracks.append(uTrack)
                 # Update animation length
                 length = uTrack.keyframes[-1].time
