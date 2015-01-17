@@ -1051,15 +1051,20 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
     else:
         # from a standard armature
         bonesList = []
+        
         # Recursively add children
         def Traverse(bone, parent):
-            if tOptions.doOnlyVisibleBones and not any(al and bl for al,bl in zip(armature.layers, bone.layers)):
-                return
-            if tOptions.doOnlyDeformBones and not bone.use_deform:
-                return
-            bonesList.append( (bone, parent) )
+            childAdded = False
             for child in bone.children:
-                Traverse(child, bone)
+                childAdded = Traverse(child, bone) or   childAdded
+            if not childAdded:
+                if tOptions.doOnlyVisibleBones and not any(al and bl for al,bl in zip(armature.layers, bone.layers)):
+                    return False
+                if tOptions.doOnlyDeformBones and not bone.use_deform:
+                    return False
+            bonesList.append( (bone, parent) )
+            return True
+            
         # Start from bones with no parent (root bones)
         for bone in armature.bones.values():
             if bone.parent is None: 
