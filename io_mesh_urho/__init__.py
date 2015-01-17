@@ -298,6 +298,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.onlyKeyedBones = False
         self.onlyDeformBones = False
         self.onlyVisibleBones = False
+        self.parentBoneSkinning = False
         self.derigify = False
 
         self.animations = False
@@ -531,6 +532,13 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     derigify = BoolProperty(
             name = "Derigify",
             description = "Remove extra bones from Rigify armature",
+            default = False,
+            update = update_func)
+
+    parentBoneSkinning = BoolProperty(
+            name = "Use skinning for parent bones",
+            description = "If an object has a parent of type BONE use a 100% skinning on its vertices "
+                          "(use this only for a quick prototype)",
             default = False,
             update = update_func)
 
@@ -895,6 +903,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             #col.prop(settings, "actionsGlobalOrigin")
             col.prop(settings, "onlyDeformBones")
             col.prop(settings, "onlyVisibleBones")
+            col.prop(settings, "parentBoneSkinning")
 
         row = box.row()
         row.enabled = settings.skeletons
@@ -1176,6 +1185,7 @@ def ExecuteUrhoExport(context):
     tOptions.doOnlyKeyedBones = settings.onlyKeyedBones
     tOptions.doOnlyDeformBones = settings.onlyDeformBones
     tOptions.doOnlyVisibleBones = settings.onlyVisibleBones
+    tOptions.skinBoneParent = settings.parentBoneSkinning
     tOptions.derigifyArmature = settings.derigify
     tOptions.doAnimations = settings.animations
     tOptions.doAllActions = (settings.animationSource == 'ALL_ACTIONS')

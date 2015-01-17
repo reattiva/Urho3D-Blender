@@ -336,6 +336,7 @@ class TOptions:
         self.doOnlyKeyedBones = False
         self.doOnlyDeformBones = False
         self.doOnlyVisibleBones = False
+        self.skinBoneParent = False
         self.derigifyArmature = False
         self.doAnimations = True
         self.doAllActions = True
@@ -1736,7 +1737,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                     except IndexError:
                         missingGroups.add(str(g.group))
                 # If the mesh has a bone for parent use it for a 100% weight skinning
-                if meshObj.parent_type == 'BONE' and meshObj.parent_bone:
+                if tOptions.skinBoneParent and meshObj.parent_type == 'BONE' and meshObj.parent_bone:
                     boneName = meshObj.parent_bone
                     # We shouldn't have any skinning on the vertex
                     if weights:
