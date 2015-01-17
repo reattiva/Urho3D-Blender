@@ -821,6 +821,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         # Start value for geometry center (one for each geometry)
         center = Vector((0.0, 0.0, 0.0))
         
+        # Set of remapped vertices
+        remappedVertices = set()
+        
         # For each LOD level
         for i, tLodLevel in enumerate(tGeometry.lodLevels):
             uLodLevel = UrhoLodLevel()
@@ -836,6 +839,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             uLodLevel.primitiveType = TRIANGLE_LIST
 
             # If needed add a new vertex buffer (only for first LOD of a geometry)
+            # For remapping to work a geometry and its LODs must use only one buffer
             if vertexBuffer is None or (i == 0 and not useOneBuffer):
                 vertexBuffer = UrhoVertexBuffer()
                 uModel.vertexBuffers.append(vertexBuffer)
@@ -990,12 +994,12 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             # limit, to a local, in this geometry, bone index within the limit.
             if len(uModel.bones) > MAX_SKIN_MATRICES and (vertexBuffer.elementMask & ELEMENT_BLEND) == ELEMENT_BLEND:
                 discardedBones = defaultdict(float)
-                # Pass each vertex of the geometry only one time, and change the bone indices to the remapped ones.
-                # Be sure to not pass it again once its bones are remapped.
-                uVertexIndices = indexMap.values()
-                assert(len(uVertexIndices) == len(set(uVertexIndices)) )
                 # For each vertex in the buffer
-                for uVertexIndex in uVertexIndices:
+                for uVertexIndex in indexMap.values():
+                    # Be sure to not pass a vertex again once its bones are remapped
+                    if uVertexIndex in remappedVertices:
+                        continue
+                    remappedVertices.add(uVertexIndex)
                     vertex = vertexBuffer.vertices[uVertexIndex]
                     for i, (boneIndex, weight) in enumerate(vertex.weights):
                         if weight < EPSILON:
