@@ -368,7 +368,7 @@ class UrhoModel:
         self.morphs = []
         # List of UrhoBone
         self.bones = []
-        # Bounding box, containd each LOD of each geometry
+        # Bounding box, contains each LOD of each geometry
         self.boundingBox = BoundingBox()
         
 # --- Animation classes ---
@@ -841,9 +841,6 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
     vertexBuffer = None
     # Urho lod index buffer
     indexBuffer = None
-    # Model bounding box
-    minVertexPos = None
-    maxVertexPos = None
     # Maps old vertex index to Urho vertex buffer index and Urho vertex index
     modelIndexMap = {}
     
