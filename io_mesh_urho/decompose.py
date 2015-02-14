@@ -1594,13 +1594,16 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                     tMaterial.alphaMask = True
 
             # In reverse order so the first slots have precedence
-            for texture in reversed(material.texture_slots):
+            for i, texture in enumerate(reversed(material.texture_slots)):
                 if texture is None or texture.texture_coords != 'UV':
                     continue
                 textureData = bpy.data.textures[texture.name]
                 if textureData.type != 'IMAGE':
                     continue
                 if textureData.image is None:
+                    continue
+                if not material.use_textures[abs(17-i)]: # Skip disabled textures (18 slots)
+                    log.warning("Skipping disabled texture {:s}".format(texture.name))
                     continue
                 imageName = textureData.image.name
                 if texture.use_map_color_diffuse:
