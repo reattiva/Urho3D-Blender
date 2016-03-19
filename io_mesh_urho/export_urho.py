@@ -454,6 +454,8 @@ class UrhoMaterial:
         self.emissiveTexName = None
         # Material is two sided
         self.twoSided = False
+        # Material is shadeless
+        self.shadeless = False
 
     def getTextures(self):
         return  (
@@ -1249,6 +1251,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             elif tMaterial.lightmapTexName:
                 technique += "LightMap"
                 emissiveTexture = tMaterial.lightmapTexName
+        if tMaterial.shadeless:
+            technique += "Unlit";
         if tMaterial.opacity:
             technique += "Alpha";
             if tMaterial.alphaMask:
@@ -1270,6 +1274,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             uMaterial.emissiveColor = (emissive.r, emissive.g, emissive.b)
 
         uMaterial.twoSided = tMaterial.twoSided
+        uMaterial.shadeless = tMaterial.shadeless
 
         uMaterial.diffuseTexName = tMaterial.diffuseTexName
         uMaterial.normalTexName = tMaterial.normalTexName
