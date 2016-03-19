@@ -1447,6 +1447,10 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
     
     log.info("Decomposing mesh: {:s} ({:d} vertices)".format(meshObj.name, len(mesh.vertices)) )
     
+    # Compute local space unit length split normals vectors
+    mesh.calc_normals_split()
+    mesh.calc_tessface()
+
     # If we use the object local origin (orange dot) we don't need transformations
     posMatrix = Matrix.Identity(4)
     normalMatrix = Matrix.Identity(4)
@@ -1672,12 +1676,15 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             vertex = mesh.vertices[vertexIndex]
 
             position = posMatrix * vertex.co
-                
+
+            # Split normal vector
+            normal = Vector(face.split_normals[i])
+            
             # if face is smooth use vertex normal else use face normal
-            if face.use_smooth:
-                normal = vertex.normal
-            else:
-                normal = face.normal
+            ##if face.use_smooth:
+            ##    normal = vertex.normal
+            ##else:
+            ##    normal = face.normal
             normal = normalMatrix * normal
             
             # Create a new vertex
