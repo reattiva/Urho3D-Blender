@@ -351,6 +351,7 @@ class TOptions:
         self.doTracks = False
         self.doTimeline = False
         self.doTriggers = False
+        self.doAnimationZero = True
         self.doAnimationPos = True
         self.doAnimationRot = True
         self.doAnimationSca = True
@@ -1239,6 +1240,11 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             # For Tracks and Timeline we use the scene playback range
             startframe = int(scene.frame_start)
             endframe = int(scene.frame_end + 1)
+
+        # If we don't want (good idea) to use the frame zero as start, use the first keyframe 
+        # for Actions or the playback start for Tracks and the Timeline
+        if not tOptions.doAnimationZero:
+            frameOffset = startframe
 
         # Here we collect every action used by this animation, so we can filter the only used bones
         actionSet = set()

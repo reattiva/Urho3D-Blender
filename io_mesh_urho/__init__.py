@@ -298,6 +298,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
         self.animations = False
         self.animationSource = 'USED_ACTIONS'
+        self.animationZero = True
         self.animationTriggers = False
         self.animationRatioTriggers = False
         self.animationPos = True
@@ -554,6 +555,12 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
                     ('TIMELINE', "Timelime", "Export the timeline (NLA tracks sum)")),
             default = 'USED_ACTIONS',
             update = update_func)
+
+    animationZero = BoolProperty(
+            name = "Start at frame zero",
+            description = "Force frame zero as the start of Actions, Tracks and Timeline. Otherwise use the first keyframe "
+                          "for Actions or the playback start for Tracks and Timeline (Strips can only use their start)",
+            default = True)
 
     animationTriggers = BoolProperty(
             name = "Export markers as triggers",
@@ -916,6 +923,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.separator()
             column = row.column()
             column.prop(settings, "animationSource")
+            column.prop(settings, "animationZero")
             column.prop(settings, "animationTriggers")
             if settings.animationTriggers:
                 row = column.row()
@@ -1198,6 +1206,7 @@ def ExecuteUrhoExport(context):
     tOptions.doTracks = (settings.animationSource == 'ALL_TRACKS')
     tOptions.doTimeline = (settings.animationSource == 'TIMELINE')
     tOptions.doTriggers = settings.animationTriggers
+    tOptions.doAnimationZero = settings.animationZero
     tOptions.doAnimationPos = settings.animationPos
     tOptions.doAnimationRot = settings.animationRot
     tOptions.doAnimationSca = settings.animationSca
