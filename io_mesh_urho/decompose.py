@@ -1677,14 +1677,15 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
 
             position = posMatrix * vertex.co
 
-            # Split normal vector
-            normal = Vector(face.split_normals[i])
-            
-            # if face is smooth use vertex normal else use face normal
-            ##if face.use_smooth:
-            ##    normal = vertex.normal
-            ##else:
-            ##    normal = face.normal
+            if mesh.use_auto_smooth:
+                # if using Data->Normals->Auto Smooth, use split normal vector
+                normal = Vector(face.split_normals[i])
+            elif face.use_smooth:
+                # if face is smooth, use vertex normal
+                normal = vertex.normal
+            else:
+                # use face normal
+                normal = face.normal
             normal = normalMatrix * normal
             
             # Create a new vertex
@@ -1883,8 +1884,10 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
 
         # Recalculate normals
         shapeMesh.update(calc_edges = True, calc_tessface = True)
-        ##shapeMesh.calc_tessface()
-        ##shapeMesh.calc_normals()
+
+        # Compute local space unit length split normals vectors
+        shapeMesh.calc_normals_split()
+        shapeMesh.calc_tessface()
         
         # TODO: if set use 'vertex group' of the shape to filter affected vertices
         # TODO: can we use mesh tessfaces and not shapeMesh tessfaces ?
@@ -1908,10 +1911,14 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                 
                 position = posMatrix * vertex.co
                 
-                # If face is smooth use vertex normal else use face normal
-                if face.use_smooth:
+                if mesh.use_auto_smooth:
+                    # if using Data->Normals->Auto Smooth, use split normal vector
+                    normal = Vector(face.split_normals[i])
+                elif face.use_smooth:
+                    # if face is smooth, use vertex normal
                     normal = vertex.normal
                 else:
+                    # use face normal
                     normal = face.normal
                 normal = normalMatrix * normal
 

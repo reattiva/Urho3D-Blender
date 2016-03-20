@@ -595,7 +595,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     geometryNor = BoolProperty(
             name = "Normal",
-            description = "Within geometry export vertex normal",
+            description = "Within geometry export vertex normal (enable 'Auto Smooth' to export custom normals)",
             default = True,
             update = update_func)
 
