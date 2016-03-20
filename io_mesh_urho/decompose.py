@@ -1196,7 +1196,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             if tOptions.doStrips or (tOptions.doSelectedStrips and strip.select):
                 stripLink = NlaStripLink(strip, previous, track)
                 animationObjects.append(stripLink)
-            # Add an used Action 
+            # Add an used Action
             action = strip.action
             if tOptions.doUsedActions and action and not action in animationObjects:
                 animationObjects.append(action)
@@ -1278,7 +1278,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             armatureObj.animation_data.use_nla = True
             oldTrackValue = object.track.is_solo
             object.track.is_solo = True
-            # We mute the previous strip because it mess with the first frame
+            # We mute the previous strip because it makes a mess with the first frame
             if object.previous:
                 oldStripValue = object.previous.mute
                 object.previous.mute = True
@@ -1287,7 +1287,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 
         # If it is the Timeline, merge all the Tracks (not muted)
         if isinstance(object, bpy.types.Object):
-            log.info("Decomposing animation: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
+            log.info("Decomposing timeline: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
             armatureObj.animation_data.use_nla = True
             # If there are no Tracks use the saved action (NLA is empty so we can keep it on)
             if not object.animation_data.nla_tracks and savedAction:
@@ -1350,7 +1350,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             parent = poseBone.parent
         
             # For each frame
-            for time in range( startframe, endframe, scene.frame_step):
+            for time in range(startframe, endframe, scene.frame_step):
                 
                 if (progressCur % 40) == 0:
                     print("{:.3f}%\r".format(progressCur / progressTot), end='' )

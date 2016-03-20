@@ -414,7 +414,7 @@ class UrhoTrack:
 
 class UrhoTrigger:
     def __init__(self):
-         # Trigger name 
+        # Trigger name 
         self.name = ""
         # Time in seconds: float
         self.time = None
@@ -901,9 +901,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             # Set lod vertex and index buffers
             uLodLevel.vertexBuffer = len(uModel.vertexBuffers) - 1
             uLodLevel.indexBuffer = len(uModel.indexBuffers) - 1
-            print("Geometry{:d} LOD{:d} using: vertex buffer {:d} ({:d}), index buffer {:d} ({:d})"
-                  .format(geomIndex, lodIndex, uLodLevel.vertexBuffer, len(tLodLevel.indexSet),
-                  uLodLevel.indexBuffer, uLodLevel.countIndex))
+            ##print("Geometry{:d} LOD{:d} using: vertex buffer {:d} ({:d}), index buffer {:d} ({:d})"
+            ##      .format(geomIndex, lodIndex, uLodLevel.vertexBuffer, len(tLodLevel.indexSet),
+            ##      uLodLevel.indexBuffer, uLodLevel.countIndex))
             
             # Maps old vertex index to new vertex index in the new Urho buffer
             indexMap = {}
