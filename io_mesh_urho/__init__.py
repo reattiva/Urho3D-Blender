@@ -285,6 +285,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         addonPrefs = context.user_preferences.addons[__name__].preferences
 
         self.minimize = False
+        self.onlyErrors = False
         self.showDirs = False
 
         self.useSubDirs = True
@@ -369,6 +370,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     minimize = BoolProperty(
             name = "Minimize",
             description = "Minimize the export panel",
+            default = False)
+
+    onlyErrors = BoolProperty(
+            name = "Log errors",
+            description = "Show only warnings and errors in the log",
             default = False)
 
     showDirs = BoolProperty(
@@ -846,6 +852,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         #split = layout.split(percentage=0.1)
         if sys.platform.startswith('win'):
             row.operator("wm.console_toggle", text="", icon='CONSOLE')
+        row.prop(settings, "onlyErrors", text="", icon='FORCE_WIND')
         row.operator("urho.report", text="", icon='TEXT')
         if settings.minimize:
             return
@@ -1290,6 +1297,11 @@ def ExecuteUrhoExport(context):
 
     settings.errorsMem.Clear()
 
+    if settings.onlyErrors:
+        log.setLevel(logging.WARNING)
+    else:
+        log.setLevel(logging.DEBUG)
+
     if not settings.outputPath:
         log.error( "Output path is not set" )
         return False
@@ -1422,6 +1434,7 @@ def ExecuteAddon(context):
     startTime = time.time()
     print("----------------------Urho export start----------------------")    
     ExecuteUrhoExport(context)
+    log.setLevel(logging.DEBUG)
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     
     bpy.ops.urho.report('INVOKE_DEFAULT')
