@@ -345,6 +345,7 @@ class TOptions:
         self.doAnimations = True
         self.doAllActions = True
         self.doUsedActions = False
+        self.doSelectedActions = False
         self.doSelectedStrips = False
         self.doSelectedTracks = False
         self.doStrips = False
@@ -1200,6 +1201,9 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             # Add an used Action
             action = strip.action
             if tOptions.doUsedActions and action and not action in animationObjects:
+                animationObjects.append(action)
+            # Add Actions of selected Strips
+            if tOptions.doSelectedActions and strip.select and action and not action in animationObjects:
                 animationObjects.append(action)
             previous = strip
                 

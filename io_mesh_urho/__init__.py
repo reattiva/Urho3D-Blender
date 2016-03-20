@@ -548,6 +548,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             name = "",
             items = (('ALL_ACTIONS', "All Actions", "Export all the actions in memory"),
                     ('USED_ACTIONS', "Actions used in tracks", "Export only the actions used in NLA tracks"),
+                    ('SELECTED_ACTIONS', "Selected Strips' Actions", "Export the actions of the current selected NLA strips"),
                     ('SELECTED_STRIPS', "Selected Strips", "Export the current selected NLA strips"),
                     ('SELECTED_TRACKS', "Selected Tracks", "Export the current selected NLA tracks"),
                     ('ALL_STRIPS', "All Strips", "Export all NLA strips"),
@@ -1200,6 +1201,7 @@ def ExecuteUrhoExport(context):
     tOptions.doAnimations = settings.animations
     tOptions.doAllActions = (settings.animationSource == 'ALL_ACTIONS')
     tOptions.doUsedActions = (settings.animationSource == 'USED_ACTIONS')
+    tOptions.doSelectedActions = (settings.animationSource == 'SELECTED_ACTIONS')
     tOptions.doSelectedStrips = (settings.animationSource == 'SELECTED_STRIPS')
     tOptions.doSelectedTracks = (settings.animationSource == 'SELECTED_TRACKS')
     tOptions.doStrips = (settings.animationSource == 'ALL_STRIPS')
