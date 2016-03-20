@@ -418,6 +418,8 @@ class UrhoTrigger:
         self.name = ""
         # Time in seconds: float
         self.time = None
+        # Time as ratio: float
+        self.ratio = None
         # Event data (variant, see typeNames[] in Variant.cpp)
         self.data = None
 
@@ -740,7 +742,10 @@ def UrhoWriteTriggers(triggersList, filename, fOptions):
 
     for trigger in triggersList:
         triggerElem = ET.SubElement(triggersElem, "trigger")
-        triggerElem.set("time", FloatToString(trigger.time))
+        if trigger.time is not None:
+            triggerElem.set("time", FloatToString(trigger.time))
+        if trigger.ratio is not None:
+            triggerElem.set("normalizedtime", FloatToString(trigger.ratio))
         # We use a string variant, for other types See typeNames[] in Variant.cpp 
         # and XMLElement::GetVariant()
         triggerElem.set("type", "String")
@@ -1211,7 +1216,10 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         for tTrigger in tAnimation.triggers:
             uTrigger = UrhoTrigger()
             uTrigger.name = tTrigger.name
-            uTrigger.time = tTrigger.time
+            if uExportOptions.useRatioTriggers:
+                uTrigger.ratio = tTrigger.ratio
+            else:
+                uTrigger.time = tTrigger.time
             uTrigger.data = tTrigger.data
             uAnimation.triggers.append(uTrigger)
                     

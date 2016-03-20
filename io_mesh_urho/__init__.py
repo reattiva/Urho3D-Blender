@@ -235,11 +235,6 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Select errors and merge are incompatible
         if self.selectErrors:
             self.merge = False
-        # Triggers don't work with Actions
-        triggerDisable = self.animationSource == 'ALL_ACTIONS' or \
-                         self.animationSource == 'USED_ACTIONS'
-        if triggerDisable:
-            self.animationTriggers = False
             
         self.updatingProperties = False
 
@@ -304,6 +299,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.animations = False
         self.animationSource = 'USED_ACTIONS'
         self.animationTriggers = False
+        self.animationRatioTriggers = False
         self.animationPos = True
         self.animationRot = True
         self.animationSca = False
@@ -560,8 +556,14 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             update = update_func)
 
     animationTriggers = BoolProperty(
-            name = "Use markers as triggers",
-            description = "Export timeline markers as triggers (can't work with Actions)",
+            name = "Export markers as triggers",
+            description = "Export action pose markers (for actions, strips and tracks) or scene markers (for timeline) "
+                          "as triggers, the time is expressed in seconds",
+            default = False)
+
+    animationRatioTriggers = BoolProperty(
+            name = "Normalize time",
+            description = "Export the time of triggers as a number from 0 (start) to 1 (end)",
             default = False)
 
     #---------------------------------
@@ -914,11 +916,11 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.separator()
             column = row.column()
             column.prop(settings, "animationSource")
-            triggerDisable = settings.animationSource == 'ALL_ACTIONS' or \
-                             settings.animationSource == 'USED_ACTIONS'
-            row = column.row()
-            row.prop(settings, "animationTriggers")
-            row.enabled = not triggerDisable
+            column.prop(settings, "animationTriggers")
+            if settings.animationTriggers:
+                row = column.row()
+                row.separator()
+                row.prop(settings, "animationRatioTriggers")
             column.prop(settings, "onlyKeyedBones")
             row = column.row()
             row.prop(settings, "animationPos")
@@ -1283,6 +1285,7 @@ def ExecuteUrhoExport(context):
         uExportOptions = UrhoExportOptions()
         uExportOptions.splitSubMeshes = settings.geometrySplit
         uExportOptions.useStrictLods = settings.strictLods
+        uExportOptions.useRatioTriggers = settings.animationRatioTriggers
 
         if DEBUG: ttt = time.time() #!TIME
         UrhoExport(tData, uExportOptions, uExportData, settings.errorsMem)

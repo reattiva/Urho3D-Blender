@@ -286,6 +286,8 @@ class TTrigger:
         self.name = name
         # Time in seconds
         self.time = None
+        # Time as ratio
+        self.ratio = None
         # Event data (variant, see typeNames[] in Variant.cpp)
         self.data = None
 
@@ -1400,12 +1402,71 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 
         # Use timeline marker as Urho triggers
         if tOptions.doTriggers:
-            log.info("Decomposing {:d} markers for animation {:s}"
-                     .format(len(scene.timeline_markers), tAnimation.name))
-            for marker in scene.timeline_markers:
-                tTrigger = TTrigger(marker.name)
-                tTrigger.time = (marker.frame - frameOffset) / scene.render.fps
-                tTrigger.data = marker.name
+            log.info("Decomposing markers for {:s}".format(object.name))
+            markers = []
+
+            def getActionPoseMarkers(action, offset):
+                if action is None:
+                    return
+                totalFrames = action.frame_range[1] - offset
+                if totalFrames <= 0:
+                    return
+                for marker in action.pose_markers:
+                    frame = marker.frame - offset
+                    markers.append( (frame, frame/totalFrames, marker.name) )
+
+            def getStripPoseMarkers(strip, offset=0, scene=None):
+                if strip.action is None:
+                    return
+                start = strip.action_frame_start
+                end = strip.action_frame_end
+                length = end - start
+                totalFrames = length
+                stripStart = 0
+                if scene:
+                    stripStart = strip.frame_start - offset
+                    totalFrames = scene.frame_end - offset
+                if length <= 0 or totalFrames <= 0:
+                    return
+                for marker in strip.action.pose_markers:
+                    if marker.frame < start and marker.frame > end:
+                        continue
+                    delta = marker.frame - start
+                    times = 1
+                    if strip.repeat != 1.0:
+                        times = int(1 + (length * strip.repeat - delta) / length)
+                    for i in range(0, times):
+                        frame = stripStart + (delta + length * i) * strip.scale
+                        markers.append( (frame, frame/totalFrames, marker.name) )
+
+            def getSceneMarkers(scene, offset):
+                totalFrames = scene.frame_end - offset
+                if totalFrames <= 0:
+                    return
+                for marker in scene.timeline_markers:
+                    frame = marker.frame - offset
+                    markers.append( (frame, frame/totalFrames, marker.name) )
+
+            if isinstance(object, bpy.types.Action):
+                getActionPoseMarkers(object, frameOffset)
+            if isinstance(object, NlaStripLink):
+                getStripPoseMarkers(object.strip)
+            if isinstance(object, bpy.types.NlaTrack):
+                for strip in object.strips:
+                    getStripPoseMarkers(strip, frameOffset, scene)
+            if isinstance(object, bpy.types.Object):
+                getSceneMarkers(scene, frameOffset)
+                # Uncomment this loop to exports Actions Pose Markers instead of Scene Markers
+                ##for track in object.animation_data.nla_tracks:
+                ##    for strip in track.strips:
+                ##        getStripPoseMarkers(strip, scene)
+
+            markers = sorted(markers)
+            for (frame, ratio, name) in markers:
+                tTrigger = TTrigger(name)
+                tTrigger.time = frame / scene.render.fps
+                tTrigger.ratio = ratio
+                tTrigger.data = name
                 tAnimation.triggers.append(tTrigger)
 
         if tAnimation.tracks:
