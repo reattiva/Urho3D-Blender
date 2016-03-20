@@ -801,6 +801,13 @@ def GetMaxElementMask(indices, vertices):
 
 def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
 
+    global MAX_SKIN_MATRICES
+    global BONES_PER_VERTEX
+    if uExportOptions.bonesPerGeometry:
+        MAX_SKIN_MATRICES = uExportOptions.bonesPerGeometry
+    if uExportOptions.bonesPerVertex:
+        BONES_PER_VERTEX = uExportOptions.bonesPerVertex
+
     uModel = UrhoModel()
     uModel.name = tData.objectName
     uExportData.models.append(uModel)    

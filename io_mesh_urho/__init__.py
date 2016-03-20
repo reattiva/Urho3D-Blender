@@ -170,6 +170,17 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
             description = "Scenes subpath (relative to output)",
             default = "Scenes")
 
+    bonesPerGeometry = IntProperty(
+            name = "Per geometry",
+            description = "Max numbers of bones per geometry",
+            min = 64, max = 2048,
+            default = 64)
+    bonesPerVertex = IntProperty(
+            name = "Per vertex",
+            description = "Max numbers of bones per vertex",
+            min = 4, max = 256,
+            default = 4)
+
     reportWidth = IntProperty(
             name = "Window width",
             description = "Width of the report window",
@@ -190,6 +201,10 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
         layout.prop(self, "texturesPath")
         layout.prop(self, "objectsPath")
         layout.prop(self, "scenesPath")
+        row = layout.row()
+        row.label("Max number of bones:")
+        row.prop(self, "bonesPerGeometry")
+        row.prop(self, "bonesPerVertex")
         row = layout.row()
         row.label("Report window:")
         row.prop(self, "reportWidth")
@@ -1182,6 +1197,9 @@ def ExecuteUrhoExport(context):
     # Scene export options
     sOptions = SOptions()
     
+    # Addons preferences
+    addonPrefs = context.user_preferences.addons[__name__].preferences
+    
     # Copy from exporter UI settings to Decompose options
     tOptions.mergeObjects = settings.merge
     tOptions.mergeNotMaterials = settings.mergeNotMaterials
@@ -1297,6 +1315,8 @@ def ExecuteUrhoExport(context):
         uExportOptions.splitSubMeshes = settings.geometrySplit
         uExportOptions.useStrictLods = settings.strictLods
         uExportOptions.useRatioTriggers = settings.animationRatioTriggers
+        uExportOptions.bonesPerGeometry = addonPrefs.bonesPerGeometry
+        uExportOptions.bonesPerVertex = addonPrefs.bonesPerVertex
 
         if DEBUG: ttt = time.time() #!TIME
         UrhoExport(tData, uExportOptions, uExportData, settings.errorsMem)
