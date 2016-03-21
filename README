@@ -3,4 +3,20 @@ Urho3D-Blender
 
 Blender (http://www.blender.org) to Urho3D (https://github.com/urho3d/Urho3D) mesh exporter.
 
-See 'guide.txt' for the instructions.
+Download:
+https://github.com/reattiva/Urho3D-Blender/releases/download/latest/io_mesh_urho.zip
+
+Guide:
+https://github.com/reattiva/Urho3D-Blender/blob/master/guide.txt
+
+Installation:
+- download the zip file above
+- menu "File"
+- select "User Preferences..."
+- select page "Add-ons"
+- click "Install from File..." (lower toolbar)
+- select the downloaded zip file
+- in the addons list search for "Import-Export: Urho3D export"
+- enable it
+
+The addon is located in the "Properties" panel, at the end of the "Render" page (camera icon).
