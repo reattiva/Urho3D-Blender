@@ -414,10 +414,12 @@ class UrhoTrack:
 
 class UrhoTrigger:
     def __init__(self):
-         # Trigger name 
+        # Trigger name 
         self.name = ""
         # Time in seconds: float
         self.time = None
+        # Time as ratio: float
+        self.ratio = None
         # Event data (variant, see typeNames[] in Variant.cpp)
         self.data = None
 
@@ -454,6 +456,8 @@ class UrhoMaterial:
         self.emissiveTexName = None
         # Material is two sided
         self.twoSided = False
+        # Material is shadeless
+        self.shadeless = False
 
     def getTextures(self):
         return  (
@@ -738,7 +742,10 @@ def UrhoWriteTriggers(triggersList, filename, fOptions):
 
     for trigger in triggersList:
         triggerElem = ET.SubElement(triggersElem, "trigger")
-        triggerElem.set("time", FloatToString(trigger.time))
+        if trigger.time is not None:
+            triggerElem.set("time", FloatToString(trigger.time))
+        if trigger.ratio is not None:
+            triggerElem.set("normalizedtime", FloatToString(trigger.ratio))
         # We use a string variant, for other types See typeNames[] in Variant.cpp 
         # and XMLElement::GetVariant()
         triggerElem.set("type", "String")
@@ -793,6 +800,13 @@ def GetMaxElementMask(indices, vertices):
 #--------------------
 
 def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
+
+    global MAX_SKIN_MATRICES
+    global BONES_PER_VERTEX
+    if uExportOptions.bonesPerGeometry:
+        MAX_SKIN_MATRICES = uExportOptions.bonesPerGeometry
+    if uExportOptions.bonesPerVertex:
+        BONES_PER_VERTEX = uExportOptions.bonesPerVertex
 
     uModel = UrhoModel()
     uModel.name = tData.objectName
@@ -894,9 +908,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             # Set lod vertex and index buffers
             uLodLevel.vertexBuffer = len(uModel.vertexBuffers) - 1
             uLodLevel.indexBuffer = len(uModel.indexBuffers) - 1
-            print("Geometry{:d} LOD{:d} using: vertex buffer {:d} ({:d}), index buffer {:d} ({:d})"
-                  .format(geomIndex, lodIndex, uLodLevel.vertexBuffer, len(tLodLevel.indexSet),
-                  uLodLevel.indexBuffer, uLodLevel.countIndex))
+            ##print("Geometry{:d} LOD{:d} using: vertex buffer {:d} ({:d}), index buffer {:d} ({:d})"
+            ##      .format(geomIndex, lodIndex, uLodLevel.vertexBuffer, len(tLodLevel.indexSet),
+            ##      uLodLevel.indexBuffer, uLodLevel.countIndex))
             
             # Maps old vertex index to new vertex index in the new Urho buffer
             indexMap = {}
@@ -1209,7 +1223,10 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         for tTrigger in tAnimation.triggers:
             uTrigger = UrhoTrigger()
             uTrigger.name = tTrigger.name
-            uTrigger.time = tTrigger.time
+            if uExportOptions.useRatioTriggers:
+                uTrigger.ratio = tTrigger.ratio
+            else:
+                uTrigger.time = tTrigger.time
             uTrigger.data = tTrigger.data
             uAnimation.triggers.append(uTrigger)
                     
@@ -1249,6 +1266,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             elif tMaterial.lightmapTexName:
                 technique += "LightMap"
                 emissiveTexture = tMaterial.lightmapTexName
+        if tMaterial.shadeless:
+            technique += "Unlit";
         if tMaterial.opacity:
             technique += "Alpha";
             if tMaterial.alphaMask:
@@ -1270,6 +1289,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             uMaterial.emissiveColor = (emissive.r, emissive.g, emissive.b)
 
         uMaterial.twoSided = tMaterial.twoSided
+        uMaterial.shadeless = tMaterial.shadeless
 
         uMaterial.diffuseTexName = tMaterial.diffuseTexName
         uMaterial.normalTexName = tMaterial.normalTexName

@@ -26,7 +26,7 @@ bl_info = {
     "name": "Urho3D export",
     "description": "Urho3D export",
     "author": "reattiva",
-    "version": (0, 5),
+    "version": (0, 6),
     "blender": (2, 66, 0),
     "location": "Properties > Render > Urho export",
     "warning": "big bugs, use at your own risk",
@@ -170,6 +170,17 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
             description = "Scenes subpath (relative to output)",
             default = "Scenes")
 
+    bonesPerGeometry = IntProperty(
+            name = "Per geometry",
+            description = "Max numbers of bones per geometry",
+            min = 64, max = 2048,
+            default = 64)
+    bonesPerVertex = IntProperty(
+            name = "Per vertex",
+            description = "Max numbers of bones per vertex",
+            min = 4, max = 256,
+            default = 4)
+
     reportWidth = IntProperty(
             name = "Window width",
             description = "Width of the report window",
@@ -190,6 +201,10 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
         layout.prop(self, "texturesPath")
         layout.prop(self, "objectsPath")
         layout.prop(self, "scenesPath")
+        row = layout.row()
+        row.label("Max number of bones:")
+        row.prop(self, "bonesPerGeometry")
+        row.prop(self, "bonesPerVertex")
         row = layout.row()
         row.label("Report window:")
         row.prop(self, "reportWidth")
@@ -235,11 +250,6 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Select errors and merge are incompatible
         if self.selectErrors:
             self.merge = False
-        # Triggers don't work with Actions
-        triggerDisable = self.animationSource == 'ALL_ACTIONS' or \
-                         self.animationSource == 'USED_ACTIONS'
-        if triggerDisable:
-            self.animationTriggers = False
             
         self.updatingProperties = False
 
@@ -275,6 +285,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         addonPrefs = context.user_preferences.addons[__name__].preferences
 
         self.minimize = False
+        self.onlyErrors = False
         self.showDirs = False
 
         self.useSubDirs = True
@@ -303,7 +314,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
         self.animations = False
         self.animationSource = 'USED_ACTIONS'
+        self.animationZero = True
         self.animationTriggers = False
+        self.animationRatioTriggers = False
         self.animationPos = True
         self.animationRot = True
         self.animationSca = False
@@ -357,6 +370,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     minimize = BoolProperty(
             name = "Minimize",
             description = "Minimize the export panel",
+            default = False)
+
+    onlyErrors = BoolProperty(
+            name = "Log errors",
+            description = "Show only warnings and errors in the log",
             default = False)
 
     showDirs = BoolProperty(
@@ -551,6 +569,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             name = "",
             items = (('ALL_ACTIONS', "All Actions", "Export all the actions in memory"),
                     ('USED_ACTIONS', "Actions used in tracks", "Export only the actions used in NLA tracks"),
+                    ('SELECTED_ACTIONS', "Selected Strips' Actions", "Export the actions of the current selected NLA strips"),
                     ('SELECTED_STRIPS', "Selected Strips", "Export the current selected NLA strips"),
                     ('SELECTED_TRACKS', "Selected Tracks", "Export the current selected NLA tracks"),
                     ('ALL_STRIPS', "All Strips", "Export all NLA strips"),
@@ -559,9 +578,21 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = 'USED_ACTIONS',
             update = update_func)
 
+    animationZero = BoolProperty(
+            name = "Start at frame zero",
+            description = "Force frame zero as the start of Actions, Tracks and Timeline. Otherwise use the first keyframe "
+                          "for Actions or the playback start for Tracks and Timeline (Strips can only use their start)",
+            default = True)
+
     animationTriggers = BoolProperty(
-            name = "Use markers as triggers",
-            description = "Export timeline markers as triggers (can't work with Actions)",
+            name = "Export markers as triggers",
+            description = "Export action pose markers (for actions, strips and tracks) or scene markers (for timeline) "
+                          "as triggers, the time is expressed in seconds",
+            default = False)
+
+    animationRatioTriggers = BoolProperty(
+            name = "Normalize time",
+            description = "Export the time of triggers as a number from 0 (start) to 1 (end)",
             default = False)
 
     #---------------------------------
@@ -595,7 +626,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     geometryNor = BoolProperty(
             name = "Normal",
-            description = "Within geometry export vertex normal",
+            description = "Within geometry export vertex normal (enable 'Auto Smooth' to export custom normals)",
             default = True,
             update = update_func)
 
@@ -821,6 +852,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         #split = layout.split(percentage=0.1)
         if sys.platform.startswith('win'):
             row.operator("wm.console_toggle", text="", icon='CONSOLE')
+        row.prop(settings, "onlyErrors", text="", icon='FORCE_WIND')
         row.operator("urho.report", text="", icon='TEXT')
         if settings.minimize:
             return
@@ -914,11 +946,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.separator()
             column = row.column()
             column.prop(settings, "animationSource")
-            triggerDisable = settings.animationSource == 'ALL_ACTIONS' or \
-                             settings.animationSource == 'USED_ACTIONS'
-            row = column.row()
-            row.prop(settings, "animationTriggers")
-            row.enabled = not triggerDisable
+            column.prop(settings, "animationZero")
+            column.prop(settings, "animationTriggers")
+            if settings.animationTriggers:
+                row = column.row()
+                row.separator()
+                row.prop(settings, "animationRatioTriggers")
             column.prop(settings, "onlyKeyedBones")
             row = column.row()
             row.prop(settings, "animationPos")
@@ -1171,6 +1204,9 @@ def ExecuteUrhoExport(context):
     # Scene export options
     sOptions = SOptions()
     
+    # Addons preferences
+    addonPrefs = context.user_preferences.addons[__name__].preferences
+    
     # Copy from exporter UI settings to Decompose options
     tOptions.mergeObjects = settings.merge
     tOptions.mergeNotMaterials = settings.mergeNotMaterials
@@ -1190,12 +1226,14 @@ def ExecuteUrhoExport(context):
     tOptions.doAnimations = settings.animations
     tOptions.doAllActions = (settings.animationSource == 'ALL_ACTIONS')
     tOptions.doUsedActions = (settings.animationSource == 'USED_ACTIONS')
+    tOptions.doSelectedActions = (settings.animationSource == 'SELECTED_ACTIONS')
     tOptions.doSelectedStrips = (settings.animationSource == 'SELECTED_STRIPS')
     tOptions.doSelectedTracks = (settings.animationSource == 'SELECTED_TRACKS')
     tOptions.doStrips = (settings.animationSource == 'ALL_STRIPS')
     tOptions.doTracks = (settings.animationSource == 'ALL_TRACKS')
     tOptions.doTimeline = (settings.animationSource == 'TIMELINE')
     tOptions.doTriggers = settings.animationTriggers
+    tOptions.doAnimationZero = settings.animationZero
     tOptions.doAnimationPos = settings.animationPos
     tOptions.doAnimationRot = settings.animationRot
     tOptions.doAnimationSca = settings.animationSca
@@ -1259,6 +1297,11 @@ def ExecuteUrhoExport(context):
 
     settings.errorsMem.Clear()
 
+    if settings.onlyErrors:
+        log.setLevel(logging.WARNING)
+    else:
+        log.setLevel(logging.DEBUG)
+
     if not settings.outputPath:
         log.error( "Output path is not set" )
         return False
@@ -1283,6 +1326,9 @@ def ExecuteUrhoExport(context):
         uExportOptions = UrhoExportOptions()
         uExportOptions.splitSubMeshes = settings.geometrySplit
         uExportOptions.useStrictLods = settings.strictLods
+        uExportOptions.useRatioTriggers = settings.animationRatioTriggers
+        uExportOptions.bonesPerGeometry = addonPrefs.bonesPerGeometry
+        uExportOptions.bonesPerVertex = addonPrefs.bonesPerVertex
 
         if DEBUG: ttt = time.time() #!TIME
         UrhoExport(tData, uExportOptions, uExportData, settings.errorsMem)
@@ -1388,6 +1434,7 @@ def ExecuteAddon(context):
     startTime = time.time()
     print("----------------------Urho export start----------------------")    
     ExecuteUrhoExport(context)
+    log.setLevel(logging.DEBUG)
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     
     bpy.ops.urho.report('INVOKE_DEFAULT')

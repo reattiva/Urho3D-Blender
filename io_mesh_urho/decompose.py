@@ -226,6 +226,8 @@ class TMaterial:
         self.lightmapTexName = None
         # Ambient light map texture filename (light map modulated by ambient color)(no path)
         self.ambientLightTexName = None
+        # Material is shadeless
+        self.shadeless = False
 
     def __eq__(self, other):
         if hasattr(other, 'name'):
@@ -284,6 +286,8 @@ class TTrigger:
         self.name = name
         # Time in seconds
         self.time = None
+        # Time as ratio
+        self.ratio = None
         # Event data (variant, see typeNames[] in Variant.cpp)
         self.data = None
 
@@ -341,12 +345,14 @@ class TOptions:
         self.doAnimations = True
         self.doAllActions = True
         self.doUsedActions = False
+        self.doSelectedActions = False
         self.doSelectedStrips = False
         self.doSelectedTracks = False
         self.doStrips = False
         self.doTracks = False
         self.doTimeline = False
         self.doTriggers = False
+        self.doAnimationZero = True
         self.doAnimationPos = True
         self.doAnimationRot = True
         self.doAnimationSca = True
@@ -1192,9 +1198,12 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             if tOptions.doStrips or (tOptions.doSelectedStrips and strip.select):
                 stripLink = NlaStripLink(strip, previous, track)
                 animationObjects.append(stripLink)
-            # Add an used Action 
+            # Add an used Action
             action = strip.action
             if tOptions.doUsedActions and action and not action in animationObjects:
+                animationObjects.append(action)
+            # Add Actions of selected Strips
+            if tOptions.doSelectedActions and strip.select and action and not action in animationObjects:
                 animationObjects.append(action)
             previous = strip
                 
@@ -1236,6 +1245,11 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             startframe = int(scene.frame_start)
             endframe = int(scene.frame_end + 1)
 
+        # If we don't want (good idea) to use the frame zero as start, use the first keyframe 
+        # for Actions or the playback start for Tracks and the Timeline
+        if not tOptions.doAnimationZero:
+            frameOffset = startframe
+
         # Here we collect every action used by this animation, so we can filter the only used bones
         actionSet = set()
 
@@ -1274,7 +1288,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             armatureObj.animation_data.use_nla = True
             oldTrackValue = object.track.is_solo
             object.track.is_solo = True
-            # We mute the previous strip because it mess with the first frame
+            # We mute the previous strip because it makes a mess with the first frame
             if object.previous:
                 oldStripValue = object.previous.mute
                 object.previous.mute = True
@@ -1283,7 +1297,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 
         # If it is the Timeline, merge all the Tracks (not muted)
         if isinstance(object, bpy.types.Object):
-            log.info("Decomposing animation: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
+            log.info("Decomposing timeline: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
             armatureObj.animation_data.use_nla = True
             # If there are no Tracks use the saved action (NLA is empty so we can keep it on)
             if not object.animation_data.nla_tracks and savedAction:
@@ -1346,7 +1360,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             parent = poseBone.parent
         
             # For each frame
-            for time in range( startframe, endframe, scene.frame_step):
+            for time in range(startframe, endframe, scene.frame_step):
                 
                 if (progressCur % 40) == 0:
                     print("{:.3f}%\r".format(progressCur / progressTot), end='' )
@@ -1398,12 +1412,71 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 
         # Use timeline marker as Urho triggers
         if tOptions.doTriggers:
-            log.info("Decomposing {:d} markers for animation {:s}"
-                     .format(len(scene.timeline_markers), tAnimation.name))
-            for marker in scene.timeline_markers:
-                tTrigger = TTrigger(marker.name)
-                tTrigger.time = (marker.frame - frameOffset) / scene.render.fps
-                tTrigger.data = marker.name
+            log.info("Decomposing markers for {:s}".format(object.name))
+            markers = []
+
+            def getActionPoseMarkers(action, offset):
+                if action is None:
+                    return
+                totalFrames = action.frame_range[1] - offset
+                if totalFrames <= 0:
+                    return
+                for marker in action.pose_markers:
+                    frame = marker.frame - offset
+                    markers.append( (frame, frame/totalFrames, marker.name) )
+
+            def getStripPoseMarkers(strip, offset=0, scene=None):
+                if strip.action is None:
+                    return
+                start = strip.action_frame_start
+                end = strip.action_frame_end
+                length = end - start
+                totalFrames = length
+                stripStart = 0
+                if scene:
+                    stripStart = strip.frame_start - offset
+                    totalFrames = scene.frame_end - offset
+                if length <= 0 or totalFrames <= 0:
+                    return
+                for marker in strip.action.pose_markers:
+                    if marker.frame < start and marker.frame > end:
+                        continue
+                    delta = marker.frame - start
+                    times = 1
+                    if strip.repeat != 1.0:
+                        times = int(1 + (length * strip.repeat - delta) / length)
+                    for i in range(0, times):
+                        frame = stripStart + (delta + length * i) * strip.scale
+                        markers.append( (frame, frame/totalFrames, marker.name) )
+
+            def getSceneMarkers(scene, offset):
+                totalFrames = scene.frame_end - offset
+                if totalFrames <= 0:
+                    return
+                for marker in scene.timeline_markers:
+                    frame = marker.frame - offset
+                    markers.append( (frame, frame/totalFrames, marker.name) )
+
+            if isinstance(object, bpy.types.Action):
+                getActionPoseMarkers(object, frameOffset)
+            if isinstance(object, NlaStripLink):
+                getStripPoseMarkers(object.strip)
+            if isinstance(object, bpy.types.NlaTrack):
+                for strip in object.strips:
+                    getStripPoseMarkers(strip, frameOffset, scene)
+            if isinstance(object, bpy.types.Object):
+                getSceneMarkers(scene, frameOffset)
+                # Uncomment this loop to exports Actions Pose Markers instead of Scene Markers
+                ##for track in object.animation_data.nla_tracks:
+                ##    for strip in track.strips:
+                ##        getStripPoseMarkers(strip, scene)
+
+            markers = sorted(markers)
+            for (frame, ratio, name) in markers:
+                tTrigger = TTrigger(name)
+                tTrigger.time = frame / scene.render.fps
+                tTrigger.ratio = ratio
+                tTrigger.data = name
                 tAnimation.triggers.append(tTrigger)
 
         if tAnimation.tracks:
@@ -1591,7 +1664,8 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             tMaterial.specularColor = material.specular_color
             tMaterial.specularIntensity = material.specular_intensity
             tMaterial.specularHardness = material.specular_hardness
-            tMaterial.twoSided = mesh.show_double_sided 
+            tMaterial.twoSided = mesh.show_double_sided
+            tMaterial.shadeless = material.use_shadeless
             if material.use_transparency:
                 tMaterial.opacity = material.alpha
                 if material.transparency_method == 'MASK':
@@ -1674,14 +1748,15 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
 
             position = posMatrix * vertex.co
 
-            # Split normal vector
-            normal = Vector(face.split_normals[i])
-            
-            # if face is smooth use vertex normal else use face normal
-            ##if face.use_smooth:
-            ##    normal = vertex.normal
-            ##else:
-            ##    normal = face.normal
+            if mesh.use_auto_smooth:
+                # if using Data->Normals->Auto Smooth, use split normal vector
+                normal = Vector(face.split_normals[i])
+            elif face.use_smooth:
+                # if face is smooth, use vertex normal
+                normal = vertex.normal
+            else:
+                # use face normal
+                normal = face.normal
             normal = normalMatrix * normal
             
             # Create a new vertex
@@ -1880,8 +1955,10 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
 
         # Recalculate normals
         shapeMesh.update(calc_edges = True, calc_tessface = True)
-        ##shapeMesh.calc_tessface()
-        ##shapeMesh.calc_normals()
+
+        # Compute local space unit length split normals vectors
+        shapeMesh.calc_normals_split()
+        shapeMesh.calc_tessface()
         
         # TODO: if set use 'vertex group' of the shape to filter affected vertices
         # TODO: can we use mesh tessfaces and not shapeMesh tessfaces ?
@@ -1905,10 +1982,14 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                 
                 position = posMatrix * vertex.co
                 
-                # If face is smooth use vertex normal else use face normal
-                if face.use_smooth:
+                if mesh.use_auto_smooth:
+                    # if using Data->Normals->Auto Smooth, use split normal vector
+                    normal = Vector(face.split_normals[i])
+                elif face.use_smooth:
+                    # if face is smooth, use vertex normal
                     normal = vertex.normal
                 else:
+                    # use face normal
                     normal = face.normal
                 normal = normalMatrix * normal
 

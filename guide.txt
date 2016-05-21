@@ -1,19 +1,25 @@
 
-io_mesh_urho v0.5
+io_mesh_urho v0.6
 
 This is a Blender addon that helps you exporting your meshes, armatures, animations and materials to Urho3D.
 It is an amateur work, done with little knowledge of Urho3D and Blender, but I hope it helps.
 Public domain license. Maintained by reattiva (you can contact me @gmail.com).
 
- Installation
---------------
-- download the zip file from GitHub and unzip it;
+ Installation from releases
+----------------------------
+- download the latest zip file from the releases
+- jump to the plus below
+
+ Installation from GitHub zips
+-------------------------------
+- download the zip file from GitHub repository main page using the button "Download ZIP";
+- unzip it;
 - select the folder 'io_mesh_urho' and re-create a zip file (you need the folder 'io_mesh_urho' in the zip file);
-- open Blender;
++ open Blender;
 - open 'user preferences' (Ctrl+Alt+U);
 - click 'Addons' on the top bar;
 - click 'Install from file...' on the bottom bar;
-- select your created zip file;
+- select the zip file;
 - now search in the list, you should see a greyed line named 'Import-Export: Urho3D export';
 - click on the checkbox on the right to enable the addon (see below if you can't set the check);
 - optional: click 'Save User Settings' to remember this addon as enabled.
@@ -62,7 +68,7 @@ Set the meshes origin:
   'Global': the origin of all the meshes will be the Blender global origin (the center of the grid), meshes are kept in place.
   'Local': for each mesh the origin will be the object center (little orange dot), mesh is moved to (0,0,0).
 - Front view
-Allows to alter the rotation of the models at export.
+Allows to alter the rotation of the models.
 - Scale
 Apply a scale transformation on the object exported.
 - Apply Modifiers
@@ -105,8 +111,23 @@ Export the armature animations. Only available when 'Skeletons' option is checke
   'All Strips'
   'Selected Tracks'
   'Selected Strips'
+  'Selected Strips Actions'
   'Actions used in tracks'
   'All Actions'
+  - Start at frame zero: long story short, disable (uncheck) this option.
+  If checked this option use frame zero as start. If you have a keyframe at frame zero it should work without problems,
+  but if you don't, then in the frames between 0 and the first keyframe you can see some strange movements and rotations.
+  If unchecked (recommended), the start on the animation is the first keyframe of an Actions or the playback start frame 
+  for Tracks and the Timeline.
+  Using zero as start is probably a bug, however for backward compatibility this option is present and enabled by default. 
+  - Export markers as triggers: for each exported animation which contains markers a xml file is created where the time 
+  in seconds and the name of the markers are listed. This xml file can be used in Urho as triggers to signal particular 
+  keyframe of the animation. For the Timeline only 'Scene Markers' are exported. To add a 'Scene Marker' go to the Timeline 
+  or the NLA Editor window, then from the menu Marker, select Add Marker (M). Instead Actions, Strips and Tracks export 
+  'Pose Markers'. To add a 'Pose Marker' go to the Dope Sheet, select the Action Editor, create or load an Action, then 
+  from the menu Marker, select 'Show Pose Marker' and finally select Add Marker (M).
+    - Normalize Time: in the xml file, instead of the number of seconds, use a number from 0 (at the start of the 
+      animation) to 1 (at the end)
   - Only keyed bones: export only animation of bones with an animation key.
   - Position, Rotation, Scale: select what animation data to export.
 - Geometries
