@@ -1975,7 +1975,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             tempList = []
             
             # For each Blender vertex index in the face
-            for vertexIndex in face.vertices:
+            for i, vertexIndex in enumerate(face.vertices):
 
                 # Get the Blender morphed vertex
                 vertex = shapeMesh.vertices[vertexIndex]
