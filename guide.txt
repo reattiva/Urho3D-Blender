@@ -104,6 +104,7 @@ Suboptions allow to selectively remove bones from the export:
   - Only deform bones: skip bones (and their children) for which 'Deform' property is false in Properties > Bone
   (these are bones that don't deform geometry)
   - Only visible bones: skip bones (and their children) for which Armature layer visibility (in Properties > Data > Layers) is not active
+  - Clamp bones bounding box: clamp each bone bounding box between bone head & tail. Use case is to ease generation of ragdoll, IK...
 - Animations
 Export the armature animations. Only available when 'Skeletons' option is checked.
   'Timeline'

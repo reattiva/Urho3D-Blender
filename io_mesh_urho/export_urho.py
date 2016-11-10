@@ -458,6 +458,10 @@ class UrhoMaterial:
         self.twoSided = False
         # Material is shadeless
         self.shadeless = False
+        # Shader PS defines
+        self.psdefines = ""
+        # Shader VS defines
+        self.vsdefines = ""
 
     def getTextures(self):
         return  (
@@ -1109,7 +1113,14 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                     uBone.collisionMask |= BONE_BOUNDING_BOX
                     uBone.boundingBox.merge(boneVertexPos)
 
-    
+    # Do not allow bones bounding box to grow beyond head and tail
+    if uExportOptions.clampBoundingBox:
+        for bone in uModel.bones:
+            if bone.collisionMask & BONE_BOUNDING_BOX:
+                bone.boundingBox.min.y = 0.0
+                bone.boundingBox.max.y = bone.length
+            bone.radius = bone.length
+
     for tMorph in tData.morphsList:
         uMorph = UrhoVertexMorph()
         uMorph.name = tMorph.name
@@ -1271,7 +1282,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         if tMaterial.opacity:
             technique += "Alpha";
             if tMaterial.alphaMask:
-                technique += "Mask"
+                uMaterial.psdefines += " ALPHAMASK"
 
         uMaterial.techniqueName = technique
 
