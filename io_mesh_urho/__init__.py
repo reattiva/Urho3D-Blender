@@ -311,6 +311,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.onlyVisibleBones = False
         self.parentBoneSkinning = False
         self.derigify = False
+        self.clampBoundingBox = False
 
         self.animations = False
         self.animationSource = 'USED_ACTIONS'
@@ -552,6 +553,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Remove extra bones from Rigify armature",
             default = False,
             update = update_func)
+
+    clampBoundingBox = BoolProperty(
+            name = "Clamp bones bounding box",
+            description = "Clamp each bone bounding box between bone head & tail. Use case: ragdoll, IK...",
+            default = False)
 
     parentBoneSkinning = BoolProperty(
             name = "Use skinning for parent bones",
@@ -936,6 +942,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             col.prop(settings, "onlyDeformBones")
             col.prop(settings, "onlyVisibleBones")
             col.prop(settings, "parentBoneSkinning")
+            col.prop(settings, "clampBoundingBox")
 
         row = box.row()
         row.enabled = settings.skeletons
@@ -1329,6 +1336,7 @@ def ExecuteUrhoExport(context):
         uExportOptions.useRatioTriggers = settings.animationRatioTriggers
         uExportOptions.bonesPerGeometry = addonPrefs.bonesPerGeometry
         uExportOptions.bonesPerVertex = addonPrefs.bonesPerVertex
+        uExportOptions.clampBoundingBox = settings.clampBoundingBox
 
         if DEBUG: ttt = time.time() #!TIME
         UrhoExport(tData, uExportOptions, uExportData, settings.errorsMem)

@@ -243,8 +243,8 @@ class TMaterial:
 # Animations classes
 #--------------------
 
-class TBone:    
-    def __init__(self, index, parentName, position, rotation, scale, transform):
+class TBone:
+    def __init__(self, index, parentName, position, rotation, scale, transform, length):
         # Position of the bone in the OrderedDict
         self.index = index
         # Name of the parent bone
@@ -257,6 +257,8 @@ class TBone:
         self.bindScale = scale
         # Bone transformation in object space
         self.worldTransform = transform
+        # Bone length
+        self.length = length
 
     def __str__(self):
         s = " bind pos " + str(self.bindPosition)
@@ -1137,7 +1139,7 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
 
         # Create a new bone
         parentName = parent and parent.name
-        tBone = TBone(len(bonesMap), parentName, tl, ql, sl, ml)
+        tBone = TBone(len(bonesMap), parentName, tl, ql, sl, ml, bone.length * tOptions.scale)
 
         # If new, add the bone to the map with its name
         if bone.name not in bonesMap:

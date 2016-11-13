@@ -158,6 +158,16 @@ def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
         emissiveElem.set("unit", "emissive")
         emissiveElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.emissiveTexName))
 
+    # PS defines
+    if uMaterial.psdefines != "":
+        psdefineElem = ET.SubElement(materialElem, "shader")
+        psdefineElem.set("psdefines", uMaterial.psdefines.lstrip())
+
+    # VS defines
+    if uMaterial.vsdefines != "":
+        vsdefineElem = ET.SubElement(materialElem, "shader")
+        vsdefineElem.set("vsdefines", uMaterial.vsdefines.lstrip())
+
     # Parameters
     if uMaterial.diffuseColor:
         diffuseColorElem = ET.SubElement(materialElem, "parameter")
