@@ -424,11 +424,11 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         modelNode = uSceneModel.name
 
         # If child node, parent to parent object instead of root
-        if uSceneModel.type == "StaticModel" and uSceneModel.parentObjectName:
+        if uSceneModel.type == "StaticModel" and uSceneModel.parentObjectName and (uSceneModel.parentObjectName in a):
             for usm in uScene.modelsList:
                 if usm.name == uSceneModel.parentObjectName:
-                    a[modelNode] = ET.SubElement(a[usm.name], "node") 
-                    break;
+                    a[modelNode] = ET.SubElement(a[usm.name], "node")
+                    break
         else: 
             a[modelNode] = ET.SubElement(root, "node")
 
