@@ -353,6 +353,7 @@ class UrhoBone:
         self.collisionMask = 0
         self.radius = None
         self.boundingBox = BoundingBox()
+        self.length = 0
 
 class UrhoModel:
     def __init__(self):
