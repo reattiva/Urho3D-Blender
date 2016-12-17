@@ -15,7 +15,6 @@ import logging
 
 log = logging.getLogger("ExportLogger")
 
-
 #-------------------------
 # Scene and nodes classes
 #-------------------------
@@ -86,6 +85,41 @@ class UrhoSceneModel:
         self.boundingBox = uModel.boundingBox
 
 
+# Hierarchical sorting (based on a post by Hyperboreus at SO)
+class Node:
+    def __init__(self, name):
+        self.name = name
+        self.children = []
+        self.parent = None
+
+    def to_list(self):
+        names = [self.name]
+        for child in self.children:
+            names.extend(child.to_list())
+        return names
+            
+class Tree:
+    def __init__(self):
+    	self.nodes = {}
+
+    def push(self, item):
+        name, parent = item
+        if name not in self.nodes:
+        	self.nodes[name] = Node(name)
+        if parent:
+            if parent not in self.nodes:
+                self.nodes[parent] = Node(parent)
+            if parent != name:
+                self.nodes[name].parent = self.nodes[parent]
+                self.nodes[parent].children.append(self.nodes[name])
+
+    def to_list(self):
+        names = []
+        for node in self.nodes.values():
+            if not node.parent:
+                names.extend(node.to_list())
+        return names
+
 class UrhoScene:
     def __init__(self, blenderScene):
         # Blender scene name
@@ -120,6 +154,23 @@ class UrhoScene:
             uSceneModel.Load(uExportData, uModel, objectName)
             self.modelsList.append(uSceneModel)
 
+    def SortModels(self):
+        # Sort by parent-child relation
+        names_tree = Tree()
+        for model in self.modelsList:
+            ##names_tree.push((model.objectName, model.parentObjectName))
+            names_tree.push((model.name, model.parentObjectName))
+        # Rearrange the model list in the new order
+        orderedModelsList = []
+        for name in names_tree.to_list():
+            for model in self.modelsList:
+                ##if model.objectName == name:
+                if model.name == name:
+                    orderedModelsList.append(model)
+                    # No need to reverse the list, we break straightway
+                    self.modelsList.remove(model)
+                    break
+        self.modelsList = orderedModelsList
 
 #------------------------
 # Export materials
@@ -404,6 +455,9 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         a["{:d}".format(m+2)].set("value", "Model;" + physicsModelFile)
         m += 2
         compoID += 2
+
+    # Sort the models by parent-child relationship
+    uScene.SortModels()
 
     # Export each decomposed object
     for uSceneModel in uScene.modelsList:
