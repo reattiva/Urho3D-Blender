@@ -838,7 +838,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         uBone.scale = bone.bindScale
         uBone.matrix = bone.worldTransform
         uBone.inverseMatrix = uBone.matrix.inverted()
-        uBone.derivedPosition = uBone.matrix.to_translation()        
+        uBone.derivedPosition = uBone.matrix.to_translation()
+        uBone.length = bone.length
     
     totalVertices = len(tData.verticesList) 
     
