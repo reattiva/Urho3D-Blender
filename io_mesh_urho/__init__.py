@@ -321,6 +321,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.animationPos = True
         self.animationRot = True
         self.animationSca = False
+        self.filterSingleKeyFrames = False
 
         self.geometries = True
         self.geometryPos = True
@@ -616,6 +617,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     animationSca = BoolProperty(
             name = "Scale",
             description = "Within animations export bone scales",
+            default = False)
+
+    filterSingleKeyFrames = BoolProperty(
+            name = "Remove single tracks",
+            description = "Do not export tracks which contain only one keyframe, useful for layered animations",
             default = False)
 
     geometries = BoolProperty(
@@ -964,6 +970,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.prop(settings, "animationPos")
             row.prop(settings, "animationRot")
             row.prop(settings, "animationSca")
+            column.prop(settings, "filterSingleKeyFrames")
         
         row = box.row()
         row.prop(settings, "geometries")
@@ -1244,6 +1251,7 @@ def ExecuteUrhoExport(context):
     tOptions.doAnimationPos = settings.animationPos
     tOptions.doAnimationRot = settings.animationRot
     tOptions.doAnimationSca = settings.animationSca
+    tOptions.filterSingleKeyFrames = settings.filterSingleKeyFrames
     tOptions.doGeometries = settings.geometries
     tOptions.doGeometryPos = settings.geometryPos
     tOptions.doGeometryNor = settings.geometryNor

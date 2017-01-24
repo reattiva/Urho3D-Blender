@@ -358,6 +358,7 @@ class TOptions:
         self.doAnimationPos = True
         self.doAnimationRot = True
         self.doAnimationSca = True
+        self.filterSingleKeyFrames = False
         self.doGeometries = True
         self.doGeometryPos = True
         self.doGeometryNor = True
@@ -1409,7 +1410,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 if not tTrack.frames or tTrack.frames[-1].hasMoved(tFrame):
                     tTrack.frames.append(tFrame)
                 
-            if tTrack.frames:
+            if tTrack.frames and (not tOptions.filterSingleKeyFrames or len(tTrack.frames) > 1):
                 tAnimation.tracks.append(tTrack)
 
         # Use timeline marker as Urho triggers
