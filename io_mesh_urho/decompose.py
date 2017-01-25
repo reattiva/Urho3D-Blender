@@ -372,6 +372,7 @@ class TOptions:
         self.doMorphNor = True
         self.doMorphTan = True
         self.doMorphUV = True
+        self.doMorphMute = True
         self.doOptimizeIndices = True
         self.doMaterials = True
         
@@ -1942,6 +1943,11 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             continue
         
         tMorph = TMorph(block.name)
+
+        # Skip muted shape keys if required
+        if tOptions.doMorphMute and block.mute:
+            log.warning("Skipping muted shape key: {:s}".format(block.name))
+            continue
         
         log.info("Decomposing shape: {:s} ({:d} vertices)".format(block.name, len(block.data)) )
 
