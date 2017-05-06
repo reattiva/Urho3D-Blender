@@ -203,16 +203,16 @@ class UrhoVertex:
         self.tangent = tVertex.tangent
         if tVertex.tangent:
             self.mask |= ELEMENT_TANGENT
-        # List of tuples: bone index (unsigned byte), blend weight (float)
-        self.weights = [(0, 0.0)] * BONES_PER_VERTEX
-        if not tVertex.weights is None:
+        # List of tuples: blend weight (float), bone index (unsigned byte), mapped bone index (None if the bone is not mapped)
+        self.weights = [(0.0, 0, None)] * BONES_PER_VERTEX
+        if tVertex.weights is not None:
             # Sort tuples (index, weight) by decreasing weight
             sortedList = sorted(tVertex.weights, key = operator.itemgetter(1), reverse = True)
             sortedList = sortedList[:BONES_PER_VERTEX]
             # Normalize weights and add to the list
             totalWeight = sum([t[1] for t in sortedList])
             for i, t in enumerate(sortedList):
-                self.weights[i] = (t[0], t[1] / totalWeight)
+                self.weights[i] = (t[1] / totalWeight, t[0], None)
             self.mask |= ELEMENT_BLEND
 
     # used by the function index() of lists
@@ -569,10 +569,14 @@ def UrhoWriteModel(model, filename):
                 fw.writeFloat(vertex.tangent.w)
             if mask & ELEMENT_BWEIGHTS:
                 for i in range(BONES_PER_VERTEX):
-                    fw.writeFloat(vertex.weights[i][1])
+                    fw.writeFloat(vertex.weights[i][0])
             if mask & ELEMENT_BINDICES:
                 for i in range(BONES_PER_VERTEX):
-                    fw.writeUByte(vertex.weights[i][0])
+                    boneIndex = vertex.weights[i][1]
+                    remappedBoneIndex = vertex.weights[i][2]
+                    if remappedBoneIndex is not None:
+                        boneIndex = remappedBoneIndex
+                    fw.writeUByte(boneIndex)
 
     # Number of index buffers
     fw.writeUInt(len(model.indexBuffers))
@@ -887,7 +891,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             
             if lodIndex == 0 and tLodLevel.distance != 0.0:
                 # Note: if we miss a LOD, its range will be covered by the following LOD (which is this one),
-                # this can can overlapping between LODs of different geometries
+                # this can cause overlapping between LODs of different geometries
                 log.error("First LOD of object {:s} Geometry{:d} must have 0.0 distance (found {:.3f})"
                           .format(uModel.name, geomIndex, tLodLevel.distance))
 
@@ -946,7 +950,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                     log.warning("Incompatible vertex elements in object {:s}, {!s}".format(uModel.name, e))
 
                 # All that this code do is "uVertexIndex = vertexBuffer.vertices.index(uVertex)", but we use
-                # a map to speed up.
+                # a map to speed things up.
             
                 # Get an hash of the vertex (more vertices can have the same hash)
                 uVertexHash = hash(uVertex)
@@ -1041,24 +1045,25 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                         continue
                     remappedVertices.add(uVertexIndex)
                     vertex = vertexBuffer.vertices[uVertexIndex]
-                    for j, (boneIndex, weight) in enumerate(vertex.weights):
+                    for j, (weight, boneIndex, unusedBoneIndex) in enumerate(vertex.weights):
                         if weight < EPSILON:
                             continue
                         # Search if the bone is already present in the map
                         try:
-                            newBoneIndex = uGeometry.boneMap.index(boneIndex)
+                            remappedBoneIndex = uGeometry.boneMap.index(boneIndex)
                         except ValueError:
                             # New bone, add it in the map
-                            newBoneIndex = len(uGeometry.boneMap)
-                            if newBoneIndex < MAX_SKIN_MATRICES:
+                            remappedBoneIndex = len(uGeometry.boneMap)
+                            if remappedBoneIndex < MAX_SKIN_MATRICES:
                                 uGeometry.boneMap.append(boneIndex)
                             else:
                                 boneName = uModel.bones[boneIndex].name
                                 discardedBones[boneName] += weight
-                                newBoneIndex = 0
+                                remappedBoneIndex = 0
                                 weight = 0.0
-                        # Change from the global bone index to the local bone index
-                        vertex.weights[j] = (newBoneIndex, weight)
+                        # Save the remapped local bone index (tuple[2]), do not replace the global bone index (tuple[1]) as
+                        # we'll soon use it to compute the bone bounding box
+                        vertex.weights[j] = (weight, boneIndex, remappedBoneIndex)
                 bonesIn = len(uModel.bones)
                 bonesOut = len(uGeometry.boneMap)
                 bonesFree = MAX_SKIN_MATRICES - bonesOut
@@ -1096,7 +1101,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         # For each vertex in the buffer
         for uVertex in uVertexBuffer.vertices:
             vertexPos = uVertex.pos
-            for boneIndex, weight in uVertex.weights:
+            for weight, boneIndex, remappedBoneIndex in uVertex.weights:
                 # The 0.33 threshold check is to avoid including vertices in the bone hitbox 
                 # to which the bone contributes only a little. It is rather arbitrary. (Lasse)
                 if weight > 0.33:
