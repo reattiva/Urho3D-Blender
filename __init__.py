@@ -211,7 +211,7 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, "maxMessagesCount")
 
 
-# Here we define all the UI objects we'll add in the export panel
+# Here we define all the UI objects to be added in the export panel
 class UrhoExportSettings(bpy.types.PropertyGroup):
 
     # This is called each time a property (created with the parameter 'update')
@@ -232,6 +232,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         else:
             self.geometryWei = False
             self.animations = False
+        # Use Fcurves only for actions
+        if not ('ACTIONS' in self.animationSource):
+            self.actionsByFcurves = False
         # Morphs need geometries    
         if not self.geometries:
             self.morphs = False
@@ -284,6 +287,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         
         addonPrefs = context.user_preferences.addons[__name__].preferences
 
+        self.updatingProperties = False
+
         self.minimize = False
         self.onlyErrors = False
         self.showDirs = False
@@ -309,6 +314,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.onlyKeyedBones = False
         self.onlyDeformBones = False
         self.onlyVisibleBones = False
+        self.actionsByFcurves = False
         self.parentBoneSkinning = False
         self.derigify = False
         self.clampBoundingBox = False
@@ -548,6 +554,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Don't export bones not visible and its children",
             default = False,
             update = update_func2)
+
+    actionsByFcurves = BoolProperty(
+            name = "Read actions by Fcurves",
+            description = "Should be much faster than updating the whole scene, usable only for Actions and for Quaternion rotations",
+            default = False)
 
     derigify = BoolProperty(
             name = "Derigify",
@@ -966,6 +977,9 @@ class UrhoExportRenderPanel(bpy.types.Panel):
                 row.separator()
                 row.prop(settings, "animationRatioTriggers")
             column.prop(settings, "onlyKeyedBones")
+            col = column.row()
+            col.enabled = 'ACTIONS' in settings.animationSource
+            col.prop(settings, "actionsByFcurves")
             row = column.row()
             row.prop(settings, "animationPos")
             row.prop(settings, "animationRot")
@@ -1235,6 +1249,7 @@ def ExecuteUrhoExport(context):
     tOptions.doOnlyKeyedBones = settings.onlyKeyedBones
     tOptions.doOnlyDeformBones = settings.onlyDeformBones
     tOptions.doOnlyVisibleBones = settings.onlyVisibleBones
+    tOptions.actionsByFcurves = settings.actionsByFcurves
     tOptions.skinBoneParent = settings.parentBoneSkinning
     tOptions.derigifyArmature = settings.derigify
     tOptions.doAnimations = settings.animations

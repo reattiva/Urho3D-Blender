@@ -342,6 +342,7 @@ class TOptions:
         self.doOnlyKeyedBones = False
         self.doOnlyDeformBones = False
         self.doOnlyVisibleBones = False
+        self.actionsByFcurves = False
         self.skinBoneParent = False
         self.derigifyArmature = False
         self.doAnimations = True
@@ -1253,7 +1254,10 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
         if not tOptions.doAnimationZero:
             frameOffset = startframe
 
-        # Here we collect every action used by this animation, so we can filter the only used bones
+        # Action Fcurves
+        actionFcurves = None
+
+        # Here we collect every action used by this animation, so we can filter the used bones only
         actionSet = set()
 
         # Clear current action on the armature
@@ -1265,7 +1269,13 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
         
         # If it is an Action, set the current Action; also disable NLA to disable influences from others NLA tracks
         if isinstance(object, bpy.types.Action):
-            log.info("Decomposing action: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
+            # Get the Fcurves of the Action
+            modeName = ""
+            if tOptions.actionsByFcurves:
+                actionFcurves = object.fcurves
+                if actionFcurves:
+                    modeName = " by F-curves"
+            log.info("Decomposing action{:s}: {:s} (frames {:.1f} {:.1f})".format(modeName, object.name, startframe, endframe-1))
             # Set Action on the armature
             armatureObj.animation_data.use_nla = False
             armatureObj.animation_data.action = object
@@ -1361,7 +1371,29 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             # Get the Blender pose bone (bpy.types.PoseBone)
             poseBone = armatureObj.pose.bones[boneName]
             parent = poseBone.parent
-        
+
+            if actionFcurves:
+                # Fcurves data paths
+                position_path = poseBone.path_from_id("location")
+                rotation_path = poseBone.path_from_id("rotation_quaternion")
+                scale_path = poseBone.path_from_id("scale")
+                # Find the Fcurves of the current bone
+                position_curves = []
+                rotation_curves = []
+                scale_curves = []
+                for curve in actionFcurves:
+                    if curve.data_path == position_path:
+                        position_curves.append(curve)
+                    if curve.data_path == rotation_path:
+                        rotation_curves.append(curve)
+                    if curve.data_path == scale_path:
+                        scale_curves.append(curve)
+
+                # Local rest matrix (relative to the parent)
+                restMatrix = poseBone.bone.matrix_local.copy()
+                if poseBone.parent:
+                    restMatrix = poseBone.parent.bone.matrix_local.inverted() * restMatrix
+
             # For each frame
             for time in range(startframe, endframe, scene.frame_step):
                 
@@ -1369,17 +1401,54 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     print("{:.3f}%\r".format(progressCur / progressTot), end='' )
                 progressCur += 1
                 
-                # Set frame (TODO: this is very slow, try to advance only the armature)
-                # (rna_Scene_frame_set, BKE_scene_update_for_newframe, BKE_animsys_evaluate_animdata)
-                scene.frame_set(time)
-            
-                # This matrix is referred to the armature (object space)
-                poseMatrix = poseBone.matrix.copy()
+                if actionFcurves:
+                    # Evaluate the Fcurves of the current bone at the current time
 
-                if parent:
-                    # Bone matrix relative to its parent bone
-                    poseMatrix = parent.matrix.inverted() * poseMatrix
+                    # Evaluate the position
+                    curvePosition = Vector()
+                    for curve in position_curves:
+                        curvePosition[curve.array_index] = curve.evaluate(time)
+
+                    # Evaluate the rotation
+                    curveRotation = Quaternion()
+                    for curve in rotation_curves:
+                        curveRotation[curve.array_index] = curve.evaluate(time)
+                    # Between keyframes the quaternion components curves are interpolated, so the resulting
+                    # quaternion must be normalized (at keyframes the quaternions are already normalized)
+                    curveRotation.normalize()
+
+                    # Evaluate the scale
+                    curveScale = Vector((1.0, 1.0, 1.0))
+                    for curve in scale_curves:
+                        curveScale[curve.array_index] = curve.evaluate(time)
+
+                    # Create the full trasformation matrix
+                    deltaMatrix = curveRotation.to_matrix().to_4x4()
+                    scaleMatrix = Matrix()
+                    for i in range(0, 3):
+                        scaleMatrix[i][i] = curveScale[i]
+                    deltaMatrix *= scaleMatrix
+                    deltaMatrix.translation = curvePosition
+
+                    # The matrix above is the rotation/scale/translation of the bone with respect to its rest
+                    # position relative to its parent. 
+                    # We apply the rest position to obtain the rotation/scale/translation of the bone with
+                    # respect to its parent.
+                    poseMatrix = restMatrix * deltaMatrix
+
                 else:
+                    # Set frame (TODO: this is very slow, try to advance only the armature)
+                    # (rna_Scene_frame_set, BKE_scene_update_for_newframe, BKE_animsys_evaluate_animdata)
+                    scene.frame_set(time)
+                
+                    # This matrix is referred to the armature (object space)
+                    poseMatrix = poseBone.matrix.copy()
+
+                    if parent:
+                        # Bone matrix relative to its parent bone
+                        poseMatrix = parent.matrix.inverted() * poseMatrix
+
+                if not parent:
                     # Root bone matrix relative to the armature
                     if tOptions.orientation:
                         poseMatrix = tOptions.orientation.to_matrix().to_4x4() * poseMatrix
@@ -1393,7 +1462,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 q = poseMatrix.to_quaternion()
                 s = poseMatrix.to_scale()
                 
-                # Convert position and rotation to left hand:
+                # Convert position, rotation and scale to left hand:
                 tl = Vector((t.x, t.y, -t.z))
                 ql = Quaternion((q.w, -q.x, -q.y, q.z))
                 sl = Vector((s.x, s.y, s.z))
