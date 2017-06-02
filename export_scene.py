@@ -8,10 +8,11 @@ from .utils import PathType, GetFilepath, CheckFilepath, \
                    WriteXmlFile
 
 from xml.etree import ElementTree as ET
-from mathutils import Vector
+from mathutils import Vector, Quaternion, Matrix
 import bpy
 import os
 import logging
+import math
 
 log = logging.getLogger("ExportLogger")
 
@@ -31,6 +32,7 @@ class SOptions:
         self.mergeObjects = False
         self.shape = None
         self.shapeItems = None
+        self.trasfObjects = False
 
 
 class UrhoSceneMaterial:
@@ -62,13 +64,32 @@ class UrhoSceneModel:
         self.materialsList = []
         # Model bounding box
         self.boundingBox = None
+        # Model position
+        self.position = Vector()
+        # Model rotation
+        self.rotation = Quaternion()
+        # Model scale
+        self.scale = Vector((1.0, 1.0, 1.0))
 
     def Load(self, uExportData, uModel, objectName):
         self.name = uModel.name
 
         self.blenderObjectName = objectName
         if objectName:
-            parentObject = bpy.data.objects[objectName].parent
+            object = bpy.data.objects[objectName]
+
+            # Get pos/rot/scale
+            pos = object.location
+            rot = GetQuatenion(object)
+            scale = object.scale
+
+            # Convert pos/rot/scale
+            self.position = Vector((pos.x, pos.z, pos.y))
+            self.rotation = Quaternion((rot.w, -rot.x, -rot.z, -rot.y))
+            self.scale = Vector((scale.x, scale.z, scale.y))
+
+            # Get parent object
+            parentObject = object.parent
             if parentObject and parentObject.type == 'MESH':
                 self.parentObjectName = parentObject.name
 
@@ -84,6 +105,17 @@ class UrhoSceneModel:
 
         self.boundingBox = uModel.boundingBox
 
+# Get the object quaternion rotation, convert if it uses other rotation modes
+def GetQuatenion(obj):
+    # Quaternion mode
+    if obj.rotation_mode == 'QUATERNION':
+        return obj.rotation_quaternion
+    # Axis Angle mode
+    if obj.rotation_mode == 'AXIS_ANGLE':
+        rot = obj.rotation_axis_angle
+        return Quaternion(Vector((rot[1], rot[2], rot[3])), rot[0])
+    # Euler mode
+    return obj.rotation_euler.to_quaternion()
 
 # Hierarchical sorting (based on a post by Hyperboreus at SO)
 class Node:
@@ -492,6 +524,20 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         a["{:d}".format(m)].set("name", "Name")
         a["{:d}".format(m)].set("value", uSceneModel.name)
         m += 1
+
+        if sOptions.trasfObjects:
+            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
+            a["{:d}".format(m)].set("name", "Position")
+            a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.position))
+            m += 1
+            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
+            a["{:d}".format(m)].set("name", "Rotation")
+            a["{:d}".format(m)].set("value", Vector4ToString(uSceneModel.rotation))
+            m += 1
+            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
+            a["{:d}".format(m)].set("name", "Scale")
+            a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.scale))
+            m += 1
 
         a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
         a["{:d}".format(m)].set("type", uSceneModel.type)

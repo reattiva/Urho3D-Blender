@@ -351,6 +351,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.individualPrefab = False
         self.collectivePrefab = False
         self.scenePrefab = False
+        self.trasfObjects = False
         self.physics = 'INDIVIDUAL'
         self.shape = 'TRIANGLEMESH'
 
@@ -744,6 +745,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False,
             update = update_func)
 
+    trasfObjects = BoolProperty(
+            name = "Transform objects",
+            description = "Save objects position/rotation/scale, works only with 'Front View = Back'",
+            default = False)
+
     physics = EnumProperty(
             name = "Physics",
             description = "Generate physics RigidBody(s) & Shape(s)",
@@ -1061,6 +1067,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.prop(settings, "scenePrefab")
             row.label("", icon='WORLD')
 
+            if settings.scenePrefab:
+                row = box.row()
+                row.separator()
+                row.separator()
+                row.prop(settings, "trasfObjects")
+
             row = box.row()
             row.separator()
             row.prop(settings, "physics")
@@ -1311,6 +1323,7 @@ def ExecuteUrhoExport(context):
     sOptions.noPhysics = (settings.physics == 'DISABLE')
     sOptions.individualPhysics = (settings.physics == 'INDIVIDUAL')
     sOptions.globalPhysics = (settings.physics == 'GLOBAL')
+    sOptions.trasfObjects = settings.trasfObjects
 
     fOptions.useSubDirs = settings.useSubDirs
     fOptions.fileOverwrite = settings.fileOverwrite
