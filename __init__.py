@@ -1225,6 +1225,11 @@ def selectErrors(context, errorsMem, errorName):
 def ExecuteUrhoExport(context):
     global logList
 
+    # Check Blender version
+    if bpy.app.version < (2, 70, 0):
+        log.error( "Blender version 2.70 or later is required" )
+        return False
+
     # Clear log list
     logList[:] = []
     
