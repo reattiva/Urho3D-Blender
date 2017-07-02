@@ -414,17 +414,17 @@ def GenerateTangents(tLodLevels, tVertexList, errorsMem):
             if vertex.pos is None:
                 if incompleteUvIndices is not None:
                     incompleteUvIndices.add(vertex.blenderIndex)
-                log.warning("Missing position on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                log.warning("Missing position on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex[1]))
                 return
             if vertex.normal is None:
                 if incompleteUvIndices is not None:
                     incompleteUvIndices.add(vertex.blenderIndex)
-                log.warning("Missing normal on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                log.warning("Missing normal on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex[1]))
                 return
             if vertex.uv is None:
                 if incompleteUvIndices is not None:
                     incompleteUvIndices.add(vertex.blenderIndex)
-                log.warning("Missing UV on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                log.warning("Missing UV on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex[1]))
                 return
             
             # Init tangent (3 components) and bitangent vectors
