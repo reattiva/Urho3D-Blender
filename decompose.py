@@ -1584,6 +1584,18 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
     
     verticesMap = {}
     
+    #Save existing shape key values, and set them to zero
+    shapeKeys = meshObj.data.shape_keys
+    if shapeKeys and len(shapeKeys.key_blocks) > 0:
+        keyBlocks = shapeKeys.key_blocks
+    else:
+        keyBlocks = []
+    shapeKeysOldValues = []
+    for j, block in enumerate(keyBlocks):
+        shapeKeysOldValues.append(block.value)
+        if j == 0:
+            continue
+        block.value = 0
     # Create a Mesh datablock with modifiers applied
     # (note: do not apply if not needed, it loses precision)
     mesh = meshObj.to_mesh(scene, tOptions.applyModifiers, tOptions.applySettings)
@@ -2014,16 +2026,30 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         
         log.info("Decomposing shape: {:s} ({:d} vertices)".format(block.name, len(block.data)) )
 
-        # Make a temporary copy of the mesh
-        shapeMesh = mesh.copy()
-        
-        if len(shapeMesh.vertices) != len(block.data):
-            log.error("Vertex count mismatch on shape {:s}.".format(block.name))
-            continue
-        
-        # Appy the shape
-        for i, data in enumerate(block.data):
-            shapeMesh.vertices[i].co = data.co
+        #Set the shape key to 100%
+        block.value = 1
+        #Make a tempory copy of the mesh at this shape.
+        shapeMesh = meshObj.to_mesh(scene, tOptions.applyModifiers, tOptions.applySettings)
+        #Reset the shape key to 0%
+        block.value = 0
+
+        #Check if vertex counts match. If there is a mismatch, it's likely due to vertices fused together in the shape key.
+        if len(shapeMesh.vertices) != len(mesh.vertices):
+            #Try a fallback of converting shape key data directly to vertex data. If there is a vertex count mismatch, it's due to a modifier changing the vertex count (e.g. mirror).
+            if len(shapeMesh.vertices) != len(block.data):
+                # Delete the temporary copy
+                bpy.data.meshes.remove(shapeMesh)
+                #TODO: Handling this requires a method for mapping original vertex points to their final points, which handles cases where the vertex count changes.
+                log.error("Vertex count mismatch on shape {:s}.".format(block.name))
+                continue
+            else:
+                # Delete the temporary copy
+                bpy.data.meshes.remove(shapeMesh)
+                # Make a new temporary copy of the base mesh
+                shapeMesh = mesh.copy()
+                # Apply the shape
+                for i, data in enumerate(block.data):
+                    shapeMesh.vertices[i].co = data.co
 
         # Recalculate normals
         shapeMesh.update(calc_edges = True, calc_tessface = True)
@@ -2144,6 +2170,12 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
 
         # Delete the temporary copy 
         bpy.data.meshes.remove(shapeMesh)
+
+    #Restore shape keys
+    for j, block in enumerate(keyBlocks):
+        if j == 0:
+            continue
+        block.value = shapeKeysOldValues[j]
 
     bpy.data.meshes.remove(mesh)    
 
