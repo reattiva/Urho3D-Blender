@@ -1119,7 +1119,7 @@ def register():
     
     bpy.types.Scene.urho_exportsettings = bpy.props.PointerProperty(type=UrhoExportSettings)
     
-    bpy.context.user_preferences.filepaths.use_relative_paths = False
+    #bpy.context.user_preferences.filepaths.use_relative_paths = False
     
     if not PostLoad in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(PostLoad)

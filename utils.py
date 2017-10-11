@@ -11,6 +11,7 @@ import os
 import struct
 import array
 import logging
+import bpy
 
 log = logging.getLogger("ExportLogger")
 
@@ -110,8 +111,11 @@ class ErrorsMem:
 # Get a file path for the object 'name' in a folder of type 'pathType'
 def GetFilepath(pathType, name, fOptions):
 
-    # Get the root path
-    rootPath = fOptions.paths[PathType.ROOT]
+    # Get absolute root path
+    rootPath = bpy.path.abspath(fOptions.paths[PathType.ROOT])
+
+    # Remove unnecessary separators and up-level references
+    rootPath = os.path.normpath(rootPath)
 
     # Append the relative path to get the full path
     fullPath = rootPath
