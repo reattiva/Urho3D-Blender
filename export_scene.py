@@ -67,7 +67,7 @@ class UrhoSceneModel:
         # Model position
         self.position = Vector()
         # Model rotation
-        self.rotation = Quaternion()
+        self.rotation = Quaternion((1.0, 0.0, 0.0, 0.0))
         # Model scale
         self.scale = Vector((1.0, 1.0, 1.0))
 

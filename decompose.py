@@ -331,7 +331,7 @@ class TOptions:
         self.mergeNotMaterials = False
         self.useLods = False
         self.onlySelected = False
-        self.orientation = Quaternion()
+        self.orientation = Quaternion((1.0, 0.0, 0.0, 0.0))
         self.scale = 1.0
         self.globalOrigin = True
         self.bonesGlobalOrigin = False  #useless
@@ -1410,7 +1410,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                         curvePosition[curve.array_index] = curve.evaluate(time)
 
                     # Evaluate the rotation
-                    curveRotation = Quaternion()
+                    curveRotation = Quaternion((1.0, 0.0, 0.0, 0.0))
                     for curve in rotation_curves:
                         curveRotation[curve.array_index] = curve.evaluate(time)
                     # Between keyframes the quaternion components curves are interpolated, so the resulting
