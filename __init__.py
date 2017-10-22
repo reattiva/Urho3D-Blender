@@ -606,7 +606,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False)
 
     animationExtraFrame = BoolProperty(
-            name = "Append the start frame at the end",
+            name = "Ending extra frame",
             description = "In Blender to avoid pauses in a looping animation you normally want to skip the last frame "
                           "when it is the same as the first one. Urho needs this last frame, use this option to add it. "
                           "It is needed only when using the Timeline or Nla-Tracks.",

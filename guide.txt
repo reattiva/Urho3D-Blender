@@ -120,7 +120,10 @@ Export the armature animations. Only available when 'Skeletons' option is checke
   but if you don't, then in the frames between 0 and the first keyframe you can see some strange movements and rotations.
   If unchecked (recommended), the start on the animation is the first keyframe of an Actions or the playback start frame 
   for Tracks and the Timeline.
-  Using zero as start is probably a bug, however for backward compatibility this option is present and enabled by default. 
+  Using zero as start is probably a bug, however for backward compatibility this option is present and enabled by default.
+  - Ending extra frame: extend the animation by one frame before it is exported, this should only be useful when you are
+  exporting the Timeline or the Nla-Tracks, and only for looped animations where you had to cut the last frame to get a 
+  smooth playback in Blender. See "Animations last frame" below.
   - Export markers as triggers: for each exported animation which contains markers a xml file is created where the time 
   in seconds and the name of the markers are listed. This xml file can be used in Urho as triggers to signal particular 
   keyframe of the animation. For the Timeline only 'Scene Markers' are exported. To add a 'Scene Marker' go to the Timeline 
@@ -197,6 +200,39 @@ the alpha. You need to specify these maps by appending "_RGB" and "_ALPHA" respe
 suffixes can be used together but also alone, if they are missing the first layer will be chosen for RGB only.
 For the alpha color layer use a scale of grey (black=transparent, white=opaque), starting from black or white you can
 use the Value slider (V in HSV) to easy change a greyscale color.
+
+=======================
+ Animations last frame
+=======================
+(based on my limited knowledge)
+Urho and Blender manage animations in different manners. What seems correct in Blender is not in Urho and 
+viceversa, so you need to apply some corrections. The errors are more visible in looped animations.
+
+Say that you have a looping animation of 3 frames: at frame 1 you are at position A, at frame 2 you move at
+position B, at frame 3 you move back to A. In frame 1 and 3 you are in the exact same position.
+In Blender if you set "Start=1 and End=3" (which sounds rather reasonable) you'll get an unwanted pause in 
+the playback, this is because Blender awkwardly insists on playing a full frame when it reachs frame 3.
+
+Say you set FPS=2 so you have 0.5s per frame, the Blender timeline is this:
+  0.0s: frame1  ->  0.5s: frame2  ->  1.0s: frame3  ->  1.5s: frame1  ->  2.0s:frame2 ...
+Frame3 and frame1 are played for 1.0s total but frame2 only gets 0.5s, hence the pause.
+In Blender you solve this by setting: "Start=1, End=2".
+
+Urho is different, at "Start=1, End=3" its timeline is:
+  0.0s: frame1  ->  0.5s: frame2  ->  0.999s: frame3  ->  1.0s: frame1  ->  1.5s:frame2 ...
+(see "AnimationState::AddTime" for details)
+There are no problems in Urho. However Urho needs frame3 to be exported. If you export at "Start=1, End=2"
+you'll see a good animation in Blender but a jagged one in Urho.
+To export a looped animation set: 
+  Start=the first frame, End=the last frame which is a copy of the first frame
+
+This is only needed when the exporter uses the Start and End values so:
+  'Timeline', 'All tracks (not muted)', 'Selected Tracks'
+Strips and Actions do not suffer this problem (and in this Blender does not makes sense).
+
+The option "Ending extra frame" tries to solve this by extending the animation by one frame when exporting.
+So you set the animation like Blender wants ("Start=1, End=2" in the example above) then, only if you are
+using the Timeline or a Nla-Track, you set this option to export the animation.
 
 ===========
  Materials

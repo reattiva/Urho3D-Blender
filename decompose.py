@@ -1421,23 +1421,18 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 # Check if we are at the last frame
                 isLastFrame = (frameTime >= endframe - scene.frame_step)
                 
-                time = frameTime
-                # Use the start frame as the extra end frame of a looping animation
-                if tOptions.doAnimationExtraFrame and isLastFrame:
-                    time = startframe
-
                 if actionFcurves:
                     # Evaluate the Fcurves of the current bone at the current time
 
                     # Evaluate the position
                     curvePosition = Vector()
                     for curve in position_curves:
-                        curvePosition[curve.array_index] = curve.evaluate(time)
+                        curvePosition[curve.array_index] = curve.evaluate(frameTime)
 
                     # Evaluate the rotation
                     curveRotation = Quaternion((1.0, 0.0, 0.0, 0.0))
                     for curve in rotation_curves:
-                        curveRotation[curve.array_index] = curve.evaluate(time)
+                        curveRotation[curve.array_index] = curve.evaluate(frameTime)
                     # Between keyframes the quaternion components curves are interpolated, so the resulting
                     # quaternion must be normalized (at keyframes the quaternions are already normalized)
                     curveRotation.normalize()
@@ -1445,7 +1440,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     # Evaluate the scale
                     curveScale = Vector((1.0, 1.0, 1.0))
                     for curve in scale_curves:
-                        curveScale[curve.array_index] = curve.evaluate(time)
+                        curveScale[curve.array_index] = curve.evaluate(frameTime)
 
                     # Create the full trasformation matrix
                     deltaMatrix = curveRotation.to_matrix().to_4x4()
@@ -1464,7 +1459,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 else:
                     # Set frame (TODO: this is very slow, try to advance only the armature)
                     # (rna_Scene_frame_set, BKE_scene_update_for_newframe, BKE_animsys_evaluate_animdata)
-                    scene.frame_set(time)
+                    scene.frame_set(frameTime)
                 
                     # This matrix is referred to the armature (object space)
                     poseMatrix = poseBone.matrix.copy()
