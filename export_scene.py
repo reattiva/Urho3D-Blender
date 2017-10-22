@@ -174,11 +174,11 @@ class UrhoScene:
 
     def FindFile(self, pathType, name):
         if name is None:
-            return None
+            return ""
         try:
             return self.files[pathType+name]
         except KeyError:
-            return None
+            return ""
 
     def Load(self, uExportData, objectName):
         for uModel in uExportData.models:
@@ -320,8 +320,6 @@ def IndividualPrefabXml(uScene, uSceneModel, sOptions):
     materials = ""
     for uSceneMaterial in uSceneModel.materialsList:
         file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
-        if file is None:
-            file = ""
         materials += ";" + file
 
     # Generate xml prefab content
@@ -501,8 +499,6 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         materials = ""
         for uSceneMaterial in uSceneModel.materialsList:
             file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
-            if file is None:
-                file = ""
             materials += ";" + file
 
         # Generate XML Content
@@ -567,15 +563,17 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
                         break
             bbox = uSceneModel.boundingBox
             #Size
-            x = bbox.max[0] - bbox.min[0]
-            y = bbox.max[1] - bbox.min[1]
-            z = bbox.max[2] - bbox.min[2]
-            shapeSize = Vector((x, y, z))
+            shapeSize = Vector()
+            if bbox.min and bbox.max:
+                shapeSize.x = bbox.max[0] - bbox.min[0]
+                shapeSize.y = bbox.max[1] - bbox.min[1]
+                shapeSize.z = bbox.max[2] - bbox.min[2]
             #Offset
-            offsetX = bbox.max[0] - x / 2
-            offsetY = bbox.max[1] - y / 2
-            offsetZ = bbox.max[2] - z / 2
-            shapeOffset = Vector((offsetX, offsetY, offsetZ))
+            shapeOffset = Vector()
+            if bbox.max:
+                shapeOffset.x = bbox.max[0] - shapeSize.x / 2
+                shapeOffset.y = bbox.max[1] - shapeSize.y / 2
+                shapeOffset.z = bbox.max[2] - shapeSize.z / 2
 
             a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
             a["{:d}".format(m)].set("type", "RigidBody")
