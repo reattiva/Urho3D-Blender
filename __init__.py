@@ -1389,9 +1389,9 @@ def ExecuteUrhoExport(context):
         uScene.Load(uExportData, tData.blenderObjectName)
 
         for uModel in uExportData.models:
+            filepath = GetFilepath(PathType.MODELS, uModel.name, fOptions)
+            uScene.AddFile(PathType.MODELS, uModel.name, filepath[1])
             if uModel.geometries:
-                filepath = GetFilepath(PathType.MODELS, uModel.name, fOptions)
-                uScene.AddFile(PathType.MODELS, uModel.name, filepath[1])
                 if CheckFilepath(filepath[0], fOptions):
                     log.info( "Creating model {:s}".format(filepath[1]) )
                     UrhoWriteModel(uModel, filepath[0]) 
