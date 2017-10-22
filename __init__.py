@@ -1331,6 +1331,8 @@ def ExecuteUrhoExport(context):
     sOptions.individualPhysics = (settings.physics == 'INDIVIDUAL')
     sOptions.globalPhysics = (settings.physics == 'GLOBAL')
     sOptions.trasfObjects = settings.trasfObjects
+    sOptions.globalOrigin = tOptions.globalOrigin
+    sOptions.orientation = tOptions.orientation
 
     fOptions.useSubDirs = settings.useSubDirs
     fOptions.fileOverwrite = settings.fileOverwrite
@@ -1357,7 +1359,7 @@ def ExecuteUrhoExport(context):
         return False
 
     if tOptions.mergeObjects and not tOptions.globalOrigin:
-        log.warning("Probably you should use Origin = Global")
+        log.warning("To merge objects you should use Origin = Global")
 
     # Decompose
     if DEBUG: ttt = time.time() #!TIME
@@ -1386,7 +1388,7 @@ def ExecuteUrhoExport(context):
         if DEBUG: print("[TIME] Export in {:.4f} sec".format(time.time() - ttt) ) #!TIME
         if DEBUG: ttt = time.time() #!TIME
 
-        uScene.Load(uExportData, tData.blenderObjectName)
+        uScene.Load(uExportData, tData.blenderObjectName, sOptions)
 
         for uModel in uExportData.models:
             filepath = GetFilepath(PathType.MODELS, uModel.name, fOptions)

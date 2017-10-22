@@ -33,6 +33,8 @@ class SOptions:
         self.shape = None
         self.shapeItems = None
         self.trasfObjects = False
+        self.globalOrigin = False
+        self.orientation = Quaternion((1.0, 0.0, 0.0, 0.0))
 
 
 class UrhoSceneMaterial:
@@ -71,17 +73,25 @@ class UrhoSceneModel:
         # Model scale
         self.scale = Vector((1.0, 1.0, 1.0))
 
-    def Load(self, uExportData, uModel, objectName):
+    def Load(self, uExportData, uModel, objectName, sOptions):
         self.name = uModel.name
 
         self.blenderObjectName = objectName
         if objectName:
             object = bpy.data.objects[objectName]
 
+            # Get the local matrix (relative to parent)
+            objMatrix = object.matrix_local
+            # Reorient (normally only root objects need to be re-oriented but 
+            # here we need to undo the previous rotation done by DecomposeMesh)
+            if sOptions.orientation:
+                om = sOptions.orientation.to_matrix().to_4x4()
+                objMatrix = om * objMatrix * om.inverted()
+
             # Get pos/rot/scale
-            pos = object.location
-            rot = GetQuatenion(object)
-            scale = object.scale
+            pos = objMatrix.to_translation()
+            rot = objMatrix.to_quaternion()
+            scale = objMatrix.to_scale()
 
             # Convert pos/rot/scale
             self.position = Vector((pos.x, pos.z, pos.y))
@@ -180,10 +190,10 @@ class UrhoScene:
         except KeyError:
             return ""
 
-    def Load(self, uExportData, objectName):
+    def Load(self, uExportData, objectName, sOptions):
         for uModel in uExportData.models:
             uSceneModel = UrhoSceneModel()
-            uSceneModel.Load(uExportData, uModel, objectName)
+            uSceneModel.Load(uExportData, uModel, objectName, sOptions)
             self.modelsList.append(uSceneModel)
 
     def SortModels(self):
@@ -485,6 +495,9 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         a["{:d}".format(m+2)].set("value", "Model;" + physicsModelFile)
         m += 2
         compoID += 2
+
+    if sOptions.trasfObjects and sOptions.globalOrigin:
+        log.warning("To export objects transformations you should use Origin = Local")
 
     # Sort the models by parent-child relationship
     uScene.SortModels()
