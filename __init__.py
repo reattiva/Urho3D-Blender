@@ -321,7 +321,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
         self.animations = False
         self.animationSource = 'USED_ACTIONS'
-        self.animationZero = True
+        self.animationZero = False
+        self.animationExtraFrame = True
         self.animationTriggers = False
         self.animationRatioTriggers = False
         self.animationPos = True
@@ -602,6 +603,13 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             name = "Start at frame zero",
             description = "Force frame zero as the start of Actions, Tracks and Timeline. Otherwise use the first keyframe "
                           "for Actions or the playback start for Tracks and Timeline (Strips can only use their start)",
+            default = False)
+
+    animationExtraFrame = BoolProperty(
+            name = "Append the start frame at the end",
+            description = "In Blender to avoid pauses in a looping animation you normally want to skip the last frame "
+                          "when it is the same as the first one. Urho needs this last frame, use this option to add it. "
+                          "It is needed only when using the Timeline or Nla-Tracks.",
             default = True)
 
     animationTriggers = BoolProperty(
@@ -978,6 +986,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             column = row.column()
             column.prop(settings, "animationSource")
             column.prop(settings, "animationZero")
+            column.prop(settings, "animationExtraFrame")
             column.prop(settings, "animationTriggers")
             if settings.animationTriggers:
                 row = column.row()
@@ -1282,6 +1291,7 @@ def ExecuteUrhoExport(context):
     tOptions.doTimeline = (settings.animationSource == 'TIMELINE')
     tOptions.doTriggers = settings.animationTriggers
     tOptions.doAnimationZero = settings.animationZero
+    tOptions.doAnimationExtraFrame = settings.animationExtraFrame
     tOptions.doAnimationPos = settings.animationPos
     tOptions.doAnimationRot = settings.animationRot
     tOptions.doAnimationSca = settings.animationSca

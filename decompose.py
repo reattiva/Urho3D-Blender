@@ -356,7 +356,8 @@ class TOptions:
         self.doTracks = False
         self.doTimeline = False
         self.doTriggers = False
-        self.doAnimationZero = True
+        self.doAnimationZero = False
+        self.doAnimationExtraFrame = True
         self.doAnimationPos = True
         self.doAnimationRot = True
         self.doAnimationSca = True
@@ -1261,6 +1262,10 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
         if not tOptions.doAnimationZero:
             frameOffset = startframe
 
+        # Extra frame at the end of a looping animation, we'll copy the start frame
+        if tOptions.doAnimationExtraFrame:
+            endframe += scene.frame_step
+
         # Action Fcurves
         actionFcurves = None
 
@@ -1407,12 +1412,20 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     restMatrix = poseBone.parent.bone.matrix_local.inverted() * restMatrix
 
             # For each frame
-            for time in range(startframe, endframe, scene.frame_step):
+            for frameTime in range(startframe, endframe, scene.frame_step):
                 
                 if (progressCur % 40) == 0:
                     print("{:.3f}%\r".format(progressCur / progressTot), end='' )
                 progressCur += 1
+
+                # Check if we are at the last frame
+                isLastFrame = (frameTime >= endframe - scene.frame_step)
                 
+                time = frameTime
+                # Use the start frame as the extra end frame of a looping animation
+                if tOptions.doAnimationExtraFrame and isLastFrame:
+                    time = startframe
+
                 if actionFcurves:
                     # Evaluate the Fcurves of the current bone at the current time
 
@@ -1486,10 +1499,10 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 if not tOptions.doAnimationSca:
                     sl = None
 
-                tFrame = TFrame((time - frameOffset) / scene.render.fps, tl, ql, sl)
+                tFrame = TFrame((frameTime - frameOffset) / scene.render.fps, tl, ql, sl)
 
                 # Append the frame to the track only if it is the first, the last or if something moved
-                if not tTrack.frames or time >= endframe-scene.frame_step or tTrack.frames[-1].hasMoved(tFrame):
+                if not tTrack.frames or isLastFrame or tTrack.frames[-1].hasMoved(tFrame):
                     tTrack.frames.append(tFrame)
                 
             if tTrack.frames and (not tOptions.filterSingleKeyFrames or len(tTrack.frames) > 1):
