@@ -347,6 +347,7 @@ class TOptions:
         self.derigifyArmature = False
         self.doAnimations = True
         self.doAllActions = True
+        self.doCurrentAction = False
         self.doUsedActions = False
         self.doSelectedActions = False
         self.doSelectedStrips = False
@@ -1215,6 +1216,12 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     if tOptions.doAllActions:
         animationObjects.extend(bpy.data.actions)
 
+    # Add the current Action (only if it is linked)
+    if tOptions.doCurrentAction:
+        currentAction = armatureObj.animation_data.action
+        if currentAction:
+            animationObjects.append(currentAction)
+
     # Add Timeline (as the armature object)
     if tOptions.doTimeline:
         animationObjects.append(armatureObj)
@@ -1267,7 +1274,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             log.error("You need to exit action edit mode")
             return
         
-        # If it is an Action, set the current Action; also disable NLA to disable influences from others NLA tracks
+        # If it is an Action, set the current Action; also disable NLA to disable influences from other NLA tracks
         if isinstance(object, bpy.types.Action):
             # Get the Fcurves of the Action
             modeName = ""

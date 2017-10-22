@@ -233,7 +233,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             self.geometryWei = False
             self.animations = False
         # Use Fcurves only for actions
-        if not ('ACTIONS' in self.animationSource):
+        if not ('ACTION' in self.animationSource):
             self.actionsByFcurves = False
         # Morphs need geometries    
         if not self.geometries:
@@ -587,6 +587,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     animationSource = EnumProperty(
             name = "",
             items = (('ALL_ACTIONS', "All Actions", "Export all the actions in memory"),
+                    ('CURRENT_ACTION', "Current Action", "Export the object's current action linked in the Dope Sheet editor"),
                     ('USED_ACTIONS', "Actions used in tracks", "Export only the actions used in NLA tracks"),
                     ('SELECTED_ACTIONS', "Selected Strips' Actions", "Export the actions of the current selected NLA strips"),
                     ('SELECTED_STRIPS', "Selected Strips", "Export the current selected NLA strips"),
@@ -984,7 +985,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
                 row.prop(settings, "animationRatioTriggers")
             column.prop(settings, "onlyKeyedBones")
             col = column.row()
-            col.enabled = 'ACTIONS' in settings.animationSource
+            col.enabled = 'ACTION' in settings.animationSource
             col.prop(settings, "actionsByFcurves")
             row = column.row()
             row.prop(settings, "animationPos")
@@ -1271,6 +1272,7 @@ def ExecuteUrhoExport(context):
     tOptions.derigifyArmature = settings.derigify
     tOptions.doAnimations = settings.animations
     tOptions.doAllActions = (settings.animationSource == 'ALL_ACTIONS')
+    tOptions.doCurrentAction = (settings.animationSource == 'CURRENT_ACTION')
     tOptions.doUsedActions = (settings.animationSource == 'USED_ACTIONS')
     tOptions.doSelectedActions = (settings.animationSource == 'SELECTED_ACTIONS')
     tOptions.doSelectedStrips = (settings.animationSource == 'SELECTED_STRIPS')
