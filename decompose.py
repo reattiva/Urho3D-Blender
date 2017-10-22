@@ -1379,11 +1379,14 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             poseBone = armatureObj.pose.bones[boneName]
             parent = poseBone.parent
 
+            hasEulerRotation = False
+
             if actionFcurves:
                 # Fcurves data paths
                 position_path = poseBone.path_from_id("location")
                 rotation_path = poseBone.path_from_id("rotation_quaternion")
                 scale_path = poseBone.path_from_id("scale")
+                euler_path = poseBone.path_from_id("rotation_euler")
                 # Find the Fcurves of the current bone
                 position_curves = []
                 rotation_curves = []
@@ -1391,10 +1394,12 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 for curve in actionFcurves:
                     if curve.data_path == position_path:
                         position_curves.append(curve)
-                    if curve.data_path == rotation_path:
+                    elif curve.data_path == rotation_path:
                         rotation_curves.append(curve)
-                    if curve.data_path == scale_path:
+                    elif curve.data_path == scale_path:
                         scale_curves.append(curve)
+                    elif curve.data_path == euler_path:
+                        hasEulerRotation = True
 
                 # Local rest matrix (relative to the parent)
                 restMatrix = poseBone.bone.matrix_local.copy()
@@ -1489,6 +1494,9 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 
             if tTrack.frames and (not tOptions.filterSingleKeyFrames or len(tTrack.frames) > 1):
                 tAnimation.tracks.append(tTrack)
+
+            if hasEulerRotation:
+                log.warning("{:s} has Euler rotations, only quaternions are supported".format(boneName))
 
         # Use timeline marker as Urho triggers
         if tOptions.doTriggers:
