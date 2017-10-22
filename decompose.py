@@ -1473,10 +1473,11 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     ql = None
                 if not tOptions.doAnimationSca:
                     sl = None
-                    
+
                 tFrame = TFrame((time - frameOffset) / scene.render.fps, tl, ql, sl)
-                
-                if not tTrack.frames or tTrack.frames[-1].hasMoved(tFrame):
+
+                # Append the frame to the track only if it is the first, the last or if something moved
+                if not tTrack.frames or time >= endframe-scene.frame_step or tTrack.frames[-1].hasMoved(tFrame):
                     tTrack.frames.append(tFrame)
                 
             if tTrack.frames and (not tOptions.filterSingleKeyFrames or len(tTrack.frames) > 1):
