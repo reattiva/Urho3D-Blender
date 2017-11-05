@@ -105,8 +105,10 @@ Suboptions allow to selectively remove bones from the export:
   (these are bones that don't deform geometry)
   - Only visible bones: skip bones (and their children) for which Armature layer visibility (in Properties > Data > Layers) is not active
   - Clamp bones bounding box: clamp each bone bounding box between bone head & tail. Use case is to ease generation of ragdoll, IK...
-- Animations
-Export the armature animations. Only available when 'Skeletons' option is checked.
+- Animations, Animations of objects
+The first exports the armature animations, it is available only when the 'Skeletons' option is checked. 
+The second exports objects animations. When we are exporting the Timeline animations of multiple object then a single animation is
+created with one track for each object. Use "Origin=Local". 
   'Timeline'
   'All tracks (not muted)'
   'All Strips'
@@ -114,6 +116,7 @@ Export the armature animations. Only available when 'Skeletons' option is checke
   'Selected Strips'
   'Selected Strips Actions'
   'Actions used in tracks'
+  'Current Action'
   'All Actions'
   - Start at frame zero: long story short, disable (uncheck) this option.
   If checked this option use frame zero as start. If you have a keyframe at frame zero it should work without problems,
@@ -133,6 +136,8 @@ Export the armature animations. Only available when 'Skeletons' option is checke
     - Normalize Time: in the xml file, instead of the number of seconds, use a number from 0 (at the start of the 
       animation) to 1 (at the end)
   - Only keyed bones: export only animation of bones with an animation key.
+  - Read actions by Fcurves: export Actions by evaluating the F-Curves instead of updating the whole scene, it should be 
+  much faster, it can be used only for Actions.
   - Position, Rotation, Scale: select what animation data to export.
 - Geometries
 Here you can select what vertex data to export:
