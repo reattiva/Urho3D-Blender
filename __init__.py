@@ -267,6 +267,61 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
         self.updatingProperties = False
 
+    def update_subfolders(self, context):
+        # Move folders between the output path and the subfolders
+        # (this should have been done with operators)
+        if self.updatingProperties:
+            return
+        self.updatingProperties = True
+        if self.addDir:
+            # Move the last folder from the output path to the subfolders
+            self.addDir = False
+            last = os.path.basename(os.path.normpath(self.outputPath))
+            ilast = self.outputPath.rindex(last)
+            if last and ilast >= 0:
+                self.outputPath = self.outputPath[:ilast]
+                self.modelsPath = os.path.join(last, self.modelsPath)
+                self.animationsPath = os.path.join(last, self.animationsPath)
+                self.materialsPath = os.path.join(last, self.materialsPath)
+                self.techniquesPath = os.path.join(last, self.techniquesPath)
+                self.texturesPath = os.path.join(last, self.texturesPath)
+                self.objectsPath = os.path.join(last, self.objectsPath)
+                self.scenesPath = os.path.join(last, self.scenesPath)
+        if self.removeDir:
+            # Move the first common folder from the subfolders to the output path
+            self.removeDir = False
+            ifirst = self.modelsPath.find(os.path.sep) + 1
+            first = self.modelsPath[:ifirst]
+            if first and \
+               self.animationsPath.startswith(first) and \
+               self.materialsPath.startswith(first) and \
+               self.techniquesPath.startswith(first) and \
+               self.texturesPath.startswith(first) and \
+               self.objectsPath.startswith(first) and \
+               self.scenesPath.startswith(first):
+                self.outputPath = os.path.join(self.outputPath, first)
+                self.modelsPath = self.modelsPath[ifirst:]
+                self.animationsPath = self.animationsPath[ifirst:]
+                self.materialsPath = self.materialsPath[ifirst:]
+                self.techniquesPath = self.techniquesPath[ifirst:]
+                self.texturesPath = self.texturesPath[ifirst:]
+                self.objectsPath = self.objectsPath[ifirst:]
+                self.scenesPath = self.scenesPath[ifirst:]
+        if self.addSceneDir:
+            # Append the scene name to the subfolders
+            self.addSceneDir = False
+            sceneName = context.scene.name
+            last = os.path.basename(os.path.normpath(self.modelsPath))
+            if sceneName != last:
+                self.modelsPath = os.path.join(self.modelsPath, sceneName)
+                self.animationsPath = os.path.join(self.animationsPath, sceneName)
+                self.materialsPath = os.path.join(self.materialsPath, sceneName)
+                self.techniquesPath = os.path.join(self.techniquesPath, sceneName)
+                self.texturesPath = os.path.join(self.texturesPath, sceneName)
+                self.objectsPath = os.path.join(self.objectsPath, sceneName)
+                self.scenesPath = os.path.join(self.scenesPath, sceneName)
+        self.updatingProperties = False
+
     def errors_update_func(self, context):
         if self.updatingProperties:
             return
@@ -393,6 +448,24 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             name = "Show dirs",
             description = "Show the dirs list",
             default = False)
+
+    addDir = BoolProperty(
+            name = "Output folder to subfolders",
+            description = "Move the last output folder to the subfolders",
+            default = False,
+            update = update_subfolders)
+
+    removeDir = BoolProperty(
+            name = "Subfolders to output folder",
+            description = "Move a common subfolder to the output folder",
+            default = False,
+            update = update_subfolders)
+
+    addSceneDir = BoolProperty(
+            name = "Scene to subfolders",
+            description = "Append the scene name to the subfolders",
+            default = False,
+            update = update_subfolders)
 
     # --- Output settings ---
     
@@ -914,6 +987,11 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row = box.row()
         row.prop(settings, "useSubDirs")
         showDirsIcon = 'ZOOMOUT' if settings.showDirs else 'ZOOMIN'
+        if settings.showDirs:
+            subrow = row.row(align=True)
+            subrow.prop(settings, "addDir", text="", icon='TRIA_DOWN_BAR')
+            subrow.prop(settings, "removeDir", text="", icon='TRIA_UP_BAR')
+            subrow.prop(settings, "addSceneDir", text="", icon='GROUP')
         row.prop(settings, "showDirs", text="", icon=showDirsIcon, toggle=False)
         if settings.showDirs:
             dbox = box.box()
