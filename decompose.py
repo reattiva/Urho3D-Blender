@@ -1334,8 +1334,6 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     if strip.action:
                         actionSet.add(strip.action)
 
-        if not animationObjects:
-            log.warning("No actions for animation {:s}".format(object.name))
 
         # Get the bones names
         bones = []
