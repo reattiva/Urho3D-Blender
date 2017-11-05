@@ -118,12 +118,6 @@ created with one track for each object. Use "Origin=Local".
   'Actions used in tracks'
   'Current Action'
   'All Actions'
-  - Start at frame zero: long story short, disable (uncheck) this option.
-  If checked this option use frame zero as start. If you have a keyframe at frame zero it should work without problems,
-  but if you don't, then in the frames between 0 and the first keyframe you can see some strange movements and rotations.
-  If unchecked (recommended), the start on the animation is the first keyframe of an Actions or the playback start frame 
-  for Tracks and the Timeline.
-  Using zero as start is probably a bug, however for backward compatibility this option is present and enabled by default.
   - Ending extra frame: extend the animation by one frame before it is exported, this should only be useful when you are
   exporting the Timeline or the Nla-Tracks, and only for looped animations where you had to cut the last frame to get a 
   smooth playback in Blender. See "Animations last frame" below.

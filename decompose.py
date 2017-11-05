@@ -359,7 +359,6 @@ class TOptions:
         self.doTracks = False
         self.doTimeline = False
         self.doTriggers = False
-        self.doAnimationZero = False
         self.doAnimationExtraFrame = True
         self.doAnimationPos = True
         self.doAnimationRot = True
@@ -1303,9 +1302,6 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     for object in animationObjects:
         tAnimation = commonAnimation or TAnimation(object.name)
     
-        # Frame when the animation starts
-        frameOffset = 0
-        
         # Objects to save old values
         oldTrackValue = None
         oldStripValue = None
@@ -1319,17 +1315,10 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             # Strips also have their frame range
             startframe = int(object.strip.frame_start)
             endframe = int(object.strip.frame_end + 1)
-            # Strip can start anywhere
-            frameOffset = startframe
         else:
             # For Tracks and Timeline we use the scene playback range
             startframe = int(scene.frame_start)
             endframe = int(scene.frame_end + 1)
-
-        # If we don't want (good idea) to use the frame zero as start, use the first keyframe 
-        # for Actions or the playback start for Tracks and the Timeline
-        if not tOptions.doAnimationZero:
-            frameOffset = startframe
 
         # Extra frame at the end of a looping animation, we'll copy the start frame
         if tOptions.doAnimationExtraFrame:
@@ -1611,7 +1600,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 if not tOptions.doAnimationSca:
                     sl = None
 
-                tFrame = TFrame((frameTime - frameOffset) / scene.render.fps, tl, ql, sl)
+                tFrame = TFrame((frameTime - startframe) / scene.render.fps, tl, ql, sl)
 
                 # Append the frame to the track only if it is the first, the last or if something moved
                 if not tTrack.frames or isLastFrame or tTrack.frames[-1].hasMoved(tFrame):
@@ -1668,14 +1657,14 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     markers.append( (frame, frame/totalFrames, marker.name) )
 
             if isinstance(object, bpy.types.Action):
-                getActionPoseMarkers(object, frameOffset)
+                getActionPoseMarkers(object, startframe)
             if isinstance(object, NlaStripLink):
                 getStripPoseMarkers(object.strip)
             if isinstance(object, bpy.types.NlaTrack):
                 for strip in object.strips:
-                    getStripPoseMarkers(strip, frameOffset, scene)
+                    getStripPoseMarkers(strip, startframe, scene)
             if isinstance(object, bpy.types.Object):
-                getSceneMarkers(scene, frameOffset)
+                getSceneMarkers(scene, startframe)
                 # Uncomment this loop to exports Actions Pose Markers instead of Scene Markers
                 ##for track in object.animation_data.nla_tracks:
                 ##    for strip in track.strips:
