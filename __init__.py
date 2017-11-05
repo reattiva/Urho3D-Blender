@@ -229,6 +229,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Skeleton implies weights    
         if self.skeletons:
             self.geometryWei = True
+            self.objAnimations = False
         else:
             self.geometryWei = False
             self.animations = False
@@ -320,6 +321,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.clampBoundingBox = False
 
         self.animations = False
+        self.objAnimations = False
         self.animationSource = 'USED_ACTIONS'
         self.animationZero = False
         self.animationExtraFrame = True
@@ -582,7 +584,12 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     animations = BoolProperty(
             name = "Animations",
-            description = "Export animations (Skeletons needed)",
+            description = "Export bones animations (Skeletons needed)",
+            default = False)
+
+    objAnimations = BoolProperty(
+            name = "of objects",
+            description = "Export objects animations (without Skeletons)",
             default = False)
 
     animationSource = EnumProperty(
@@ -977,10 +984,14 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             col.prop(settings, "clampBoundingBox")
 
         row = box.row()
-        row.enabled = settings.skeletons
-        row.prop(settings, "animations")
+        column = row.column()
+        column.enabled = settings.skeletons
+        column.prop(settings, "animations")
+        column = row.column()
+        column.enabled = not settings.skeletons
+        column.prop(settings, "objAnimations")
         row.label("", icon='ANIM_DATA')
-        if settings.skeletons and settings.animations:
+        if (settings.skeletons and settings.animations) or settings.objAnimations:
             row = box.row()
             row.separator()
             column = row.column()
@@ -992,7 +1003,8 @@ class UrhoExportRenderPanel(bpy.types.Panel):
                 row = column.row()
                 row.separator()
                 row.prop(settings, "animationRatioTriggers")
-            column.prop(settings, "onlyKeyedBones")
+            if settings.animations:
+                column.prop(settings, "onlyKeyedBones")
             col = column.row()
             col.enabled = 'ACTION' in settings.animationSource
             col.prop(settings, "actionsByFcurves")
@@ -1280,6 +1292,7 @@ def ExecuteUrhoExport(context):
     tOptions.skinBoneParent = settings.parentBoneSkinning
     tOptions.derigifyArmature = settings.derigify
     tOptions.doAnimations = settings.animations
+    tOptions.doObjAnimations = settings.objAnimations
     tOptions.doAllActions = (settings.animationSource == 'ALL_ACTIONS')
     tOptions.doCurrentAction = (settings.animationSource == 'CURRENT_ACTION')
     tOptions.doUsedActions = (settings.animationSource == 'USED_ACTIONS')
