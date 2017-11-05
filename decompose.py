@@ -39,7 +39,7 @@ import bpy
 import bmesh
 import math
 import time as ostime
-from mathutils import Vector, Matrix, Quaternion, Color
+from mathutils import Vector, Matrix, Quaternion, Euler, Color
 from collections import OrderedDict
 import os
 import operator
@@ -1463,16 +1463,20 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 poseBone = armatureObj
                 parent = armatureObj.parent
 
-            tTrack = TTrack(boneName)
+            rot_mode = poseBone.rotation_mode
 
-            hasEulerRotation = False
+            tTrack = TTrack(boneName)
 
             if actionFcurves:
                 # Fcurves data paths
                 position_path = poseBone.path_from_id("location")
-                rotation_path = poseBone.path_from_id("rotation_quaternion")
                 scale_path = poseBone.path_from_id("scale")
-                euler_path = poseBone.path_from_id("rotation_euler")
+                if rot_mode == 'QUATERNION':
+                    rotation_path = poseBone.path_from_id("rotation_quaternion")
+                elif rot_mode == 'AXIS_ANGLE':
+                    rotation_path = poseBone.path_from_id("rotation_axis_angle")
+                else:
+                    rotation_path = poseBone.path_from_id("rotation_euler")
                 # Find the Fcurves of the current bone
                 position_curves = []
                 rotation_curves = []
@@ -1484,8 +1488,6 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                         rotation_curves.append(curve)
                     elif curve.data_path == scale_path:
                         scale_curves.append(curve)
-                    elif curve.data_path == euler_path:
-                        hasEulerRotation = True
 
                 if isArmature:
                     # Local rest matrix (relative to the parent)
@@ -1516,8 +1518,19 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 
                     # Evaluate the rotation
                     curveRotation = Quaternion((1.0, 0.0, 0.0, 0.0))
-                    for curve in rotation_curves:
-                        curveRotation[curve.array_index] = curve.evaluate(frameTime)
+                    if rot_mode == 'QUATERNION':
+                        for curve in rotation_curves:
+                            curveRotation[curve.array_index] = curve.evaluate(frameTime)
+                    elif rot_mode == 'AXIS_ANGLE':
+                        angle_axis = Vector.Fill(4)
+                        for curve in rotation_curves:
+                            angle_axis[curve.array_index] = curve.evaluate(frameTime)
+                        curveRotation = Quaternion(angle_axis.yzw, angle_axis.x)
+                    else:
+                        eulerRotation = Euler((0.0, 0.0, 0.0), rot_mode)
+                        for curve in rotation_curves:
+                            eulerRotation[curve.array_index] = curve.evaluate(frameTime)
+                        curveRotation = eulerRotation.to_quaternion()
                     # Between keyframes the quaternion components curves are interpolated, so the resulting
                     # quaternion must be normalized (at keyframes the quaternions are already normalized)
                     curveRotation.normalize()
@@ -1606,9 +1619,6 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 
             if tTrack.frames and (not tOptions.filterSingleKeyFrames or len(tTrack.frames) > 1):
                 tAnimation.tracks.append(tTrack)
-
-            if hasEulerRotation:
-                log.warning("{:s} has Euler rotations, only quaternions are supported".format(boneName))
 
         # Use timeline marker as Urho triggers
         if tOptions.doTriggers:
