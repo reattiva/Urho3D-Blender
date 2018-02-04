@@ -91,12 +91,13 @@ class TVertex:
 
     # used by the function index() of lists
     def __eq__(self, other):
-        # TODO: can we do without color and weights?
+        # TODO: can we do without weights?
         # TODO: compare floats with a epsilon margin?
         #return (self.__dict__ == other.__dict__)
         return (self.pos == other.pos and 
                 self.normal == other.normal and 
-                self.uv == other.uv)
+                self.uv == other.uv and
+				self.color == other.color)
 
     def isEqual(self, other):
         # TODO: compare floats with a epsilon margin?
@@ -110,6 +111,8 @@ class TVertex:
             hashValue ^= hash(self.normal.x) ^ hash(self.normal.y) ^ hash(self.normal.z)
         if self.uv:
             hashValue ^= hash(self.uv.x) ^ hash(self.uv.y)
+        if self.color:
+            hashValue ^= hash(self.color[0]) ^ hash(self.color[1]) ^ hash(self.color[2]) ^ hash(self.color[3])
         return hashValue
     
     def __str__(self):
