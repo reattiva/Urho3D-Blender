@@ -12,6 +12,7 @@ import struct
 import array
 import logging
 import bpy
+import re
 
 log = logging.getLogger("ExportLogger")
 
@@ -53,7 +54,7 @@ class FOptions:
 #--------------------
 # Errors container
 #--------------------
-    
+
 class ErrorsMem:
     def __init__(self):
         self.errors = {}
@@ -122,8 +123,8 @@ def GetFilepath(pathType, name, fOptions):
     if fOptions.useSubDirs:
         fullPath = os.path.join(fullPath, fOptions.paths[pathType])
 
-    # Compose filename
-    filename = name
+    # Compose filename, remove invalid characters
+    filename =  re.sub('[^\w_.)( -]', '', name)
     if type(filename) is list or type(filename) is tuple:
         filename = os.path.sep.join(filename)
 
@@ -227,7 +228,7 @@ class BinaryFileWriter:
     def __init__(self):
         self.filename = None
         self.buffer = None
-    
+
     # Open file stream.
     def open(self, filename):
         self.filename = filename
