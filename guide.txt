@@ -308,3 +308,57 @@ Select what physics components to create for the prefabs:
 There are 2 ways to set the CollisionShape to use for the exported objects:
   - switch the rendering engine to 'Blender Game', enable 'Collision Bounds' in Properties > Physics and then select your shape
   - select a 'CollisionShape' in the Export panel: this shape is used when 'Merge objects' option is enabled or when 'Collision Bounds' is disabled.
+
+========================
+ Batch export by Slapin
+========================
+Example on how to use the exporter in a Python script.
+(https://github.com/reattiva/Urho3D-Blender/issues/78)
+
+import bpy, os
+scene = bpy.context.scene
+
+# Set the output folder and subfolder
+basepath = os.getcwd() + "/export/"
+subpath = "Models/example"
+
+# Set the exporter options
+scene.urho_exportsettings.outputPath = basepath
+scene.urho_exportsettings.fileOverwrite = True
+scene.urho_exportsettings.useSubDirs = True
+scene.urho_exportsettings.optimizeIndices = True
+scene.urho_exportsettings.lods = True
+scene.urho_exportsettings.skeletons = True
+scene.urho_exportsettings.materials = True
+scene.urho_exportsettings.textures = True
+scene.urho_exportsettings.prefabs = True
+##scene.urho_exportsettings.individualPrefab = True
+scene.urho_exportsettings.collectivePrefab = True
+scene.urho_exportsettings.geometryPos = True
+scene.urho_exportsettings.geometryNor = True
+scene.urho_exportsettings.geometryUV = True
+scene.urho_exportsettings.geometryTan = True
+scene.urho_exportsettings.geometryWei = True
+scene.urho_exportsettings.source = 'ONLY_SELECTED'
+scene.urho_exportsettings.orientation = 'Y_MINUS'
+scene.urho_exportsettings.modelsPath = subpath
+scene.urho_exportsettings.animationsPath = subpath
+scene.urho_exportsettings.materialsPath = subpath
+scene.urho_exportsettings.texturesPath = subpath
+scene.urho_exportsettings.objectsPath = subpath
+scene.urho_exportsettings.scenesPath = subpath
+
+for ob in scene.objects:
+    if ob.type == 'EMPTY' and not ob.name.endswith("_noexport"):
+        # Select the object and its children, move it to the origin
+        bpy.ops.object.select_all(action='DESELECT')
+        ob.location = (0, 0, 0)
+        ob.select = True
+        scene.objects.active = ob
+        bpy.ops.object.select_grouped(extend=True, type='CHILDREN_RECURSIVE')
+        # Backup and change the scene name to rename the prefab
+        sname = scene.name
+        scene.name = ob.name
+        # Export
+        bpy.ops.urho.export()
+        scene.name = sname
