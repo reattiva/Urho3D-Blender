@@ -29,7 +29,7 @@ bl_info = {
     "version": (0, 6),
     "blender": (2, 66, 0),
     "location": "Properties > Render > Urho export",
-    "warning": "big bugs, use at your own risk",
+    "warning": "",
     "wiki_url": "",
     "tracker_url": "",
     "category": "Import-Export"}

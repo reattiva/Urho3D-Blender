@@ -4,6 +4,7 @@ io_mesh_urho v0.6
 This is a Blender addon that helps you exporting your meshes, armatures, animations and materials to Urho3D.
 It is an amateur work, done with little knowledge of Urho3D and Blender, but I hope it helps.
 Public domain license. Maintained by reattiva (you can contact me @gmail.com).
+Contributors: https://github.com/reattiva/Urho3D-Blender/graphs/contributors
 
  Installation from releases
 ----------------------------
@@ -309,11 +310,13 @@ There are 2 ways to set the CollisionShape to use for the exported objects:
   - switch the rendering engine to 'Blender Game', enable 'Collision Bounds' in Properties > Physics and then select your shape
   - select a 'CollisionShape' in the Export panel: this shape is used when 'Merge objects' option is enabled or when 'Collision Bounds' is disabled.
 
-========================
- Batch export by Slapin
-========================
-Example on how to use the exporter in a Python script.
-(https://github.com/reattiva/Urho3D-Blender/issues/78)
+=======================================
+ Batch export by Sergey Lapin (slapin)
+=======================================
+ Example on how to use the exporter in a Python script, see:
+ https://github.com/reattiva/Urho3D-Blender/issues/78
+ To run the script in background/headless mode, good for makefiles and build systems, use the -b flag:
+ blender -b blendfile.blend -P exportscript.py
 
 import bpy, os
 scene = bpy.context.scene
