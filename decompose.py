@@ -112,7 +112,7 @@ class TVertex:
         if self.uv:
             hashValue ^= hash(self.uv.x) ^ hash(self.uv.y)
         if self.color:
-            hashValue ^= hash(self.color[0]) ^ hash(self.color[1]) ^ hash(self.color[2]) ^ hash(self.color[3])
+            hashValue ^= hash((self.color[3] << 24) | (self.color[2] << 16) | (self.color[1] << 8) | self.color[0])
         return hashValue
     
     def __str__(self):
