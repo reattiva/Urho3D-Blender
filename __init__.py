@@ -29,7 +29,7 @@ bl_info = {
     "version": (0, 6),
     "blender": (2, 66, 0),
     "location": "Properties > Render > Urho export",
-    "warning": "big bugs, use at your own risk",
+    "warning": "",
     "wiki_url": "",
     "tracker_url": "",
     "category": "Import-Export"}
@@ -211,7 +211,7 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
         row.prop(self, "maxMessagesCount")
 
 
-# Here we define all the UI objects we'll add in the export panel
+# Here we define all the UI objects to be added in the export panel
 class UrhoExportSettings(bpy.types.PropertyGroup):
 
     # This is called each time a property (created with the parameter 'update')
@@ -229,9 +229,13 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Skeleton implies weights    
         if self.skeletons:
             self.geometryWei = True
+            self.objAnimations = False
         else:
             self.geometryWei = False
             self.animations = False
+        # Use Fcurves only for actions
+        if not ('ACTION' in self.animationSource):
+            self.actionsByFcurves = False
         # Morphs need geometries    
         if not self.geometries:
             self.morphs = False
@@ -263,6 +267,61 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
         self.updatingProperties = False
 
+    def update_subfolders(self, context):
+        # Move folders between the output path and the subfolders
+        # (this should have been done with operators)
+        if self.updatingProperties:
+            return
+        self.updatingProperties = True
+        if self.addDir:
+            # Move the last folder from the output path to the subfolders
+            self.addDir = False
+            last = os.path.basename(os.path.normpath(self.outputPath))
+            ilast = self.outputPath.rindex(last)
+            if last and ilast >= 0:
+                self.outputPath = self.outputPath[:ilast]
+                self.modelsPath = os.path.join(last, self.modelsPath)
+                self.animationsPath = os.path.join(last, self.animationsPath)
+                self.materialsPath = os.path.join(last, self.materialsPath)
+                self.techniquesPath = os.path.join(last, self.techniquesPath)
+                self.texturesPath = os.path.join(last, self.texturesPath)
+                self.objectsPath = os.path.join(last, self.objectsPath)
+                self.scenesPath = os.path.join(last, self.scenesPath)
+        if self.removeDir:
+            # Move the first common folder from the subfolders to the output path
+            self.removeDir = False
+            ifirst = self.modelsPath.find(os.path.sep) + 1
+            first = self.modelsPath[:ifirst]
+            if first and \
+               self.animationsPath.startswith(first) and \
+               self.materialsPath.startswith(first) and \
+               self.techniquesPath.startswith(first) and \
+               self.texturesPath.startswith(first) and \
+               self.objectsPath.startswith(first) and \
+               self.scenesPath.startswith(first):
+                self.outputPath = os.path.join(self.outputPath, first)
+                self.modelsPath = self.modelsPath[ifirst:]
+                self.animationsPath = self.animationsPath[ifirst:]
+                self.materialsPath = self.materialsPath[ifirst:]
+                self.techniquesPath = self.techniquesPath[ifirst:]
+                self.texturesPath = self.texturesPath[ifirst:]
+                self.objectsPath = self.objectsPath[ifirst:]
+                self.scenesPath = self.scenesPath[ifirst:]
+        if self.addSceneDir:
+            # Append the scene name to the subfolders
+            self.addSceneDir = False
+            sceneName = context.scene.name
+            last = os.path.basename(os.path.normpath(self.modelsPath))
+            if sceneName != last:
+                self.modelsPath = os.path.join(self.modelsPath, sceneName)
+                self.animationsPath = os.path.join(self.animationsPath, sceneName)
+                self.materialsPath = os.path.join(self.materialsPath, sceneName)
+                self.techniquesPath = os.path.join(self.techniquesPath, sceneName)
+                self.texturesPath = os.path.join(self.texturesPath, sceneName)
+                self.objectsPath = os.path.join(self.objectsPath, sceneName)
+                self.scenesPath = os.path.join(self.scenesPath, sceneName)
+        self.updatingProperties = False
+
     def errors_update_func(self, context):
         if self.updatingProperties:
             return
@@ -283,6 +342,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     def reset(self, context): 
         
         addonPrefs = context.user_preferences.addons[__name__].preferences
+
+        self.updatingProperties = False
 
         self.minimize = False
         self.onlyErrors = False
@@ -309,13 +370,15 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.onlyKeyedBones = False
         self.onlyDeformBones = False
         self.onlyVisibleBones = False
+        self.actionsByFcurves = False
         self.parentBoneSkinning = False
         self.derigify = False
         self.clampBoundingBox = False
 
         self.animations = False
+        self.objAnimations = False
         self.animationSource = 'USED_ACTIONS'
-        self.animationZero = True
+        self.animationExtraFrame = True
         self.animationTriggers = False
         self.animationRatioTriggers = False
         self.animationPos = True
@@ -345,6 +408,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.individualPrefab = False
         self.collectivePrefab = False
         self.scenePrefab = False
+        self.trasfObjects = False
         self.physics = 'INDIVIDUAL'
         self.shape = 'TRIANGLEMESH'
 
@@ -383,6 +447,24 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             name = "Show dirs",
             description = "Show the dirs list",
             default = False)
+
+    addDir = BoolProperty(
+            name = "Output folder to subfolders",
+            description = "Move the last output folder to the subfolders",
+            default = False,
+            update = update_subfolders)
+
+    removeDir = BoolProperty(
+            name = "Subfolders to output folder",
+            description = "Move a common subfolder to the output folder",
+            default = False,
+            update = update_subfolders)
+
+    addSceneDir = BoolProperty(
+            name = "Scene to subfolders",
+            description = "Append the scene name to the subfolders",
+            default = False,
+            update = update_subfolders)
 
     # --- Output settings ---
     
@@ -549,6 +631,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False,
             update = update_func2)
 
+    actionsByFcurves = BoolProperty(
+            name = "Read actions by Fcurves",
+            description = "Should be much faster than updating the whole scene, usable only for Actions and for Quaternion rotations",
+            default = False)
+
     derigify = BoolProperty(
             name = "Derigify",
             description = "Remove extra bones from Rigify armature",
@@ -569,12 +656,18 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     animations = BoolProperty(
             name = "Animations",
-            description = "Export animations (Skeletons needed)",
+            description = "Export bones animations (Skeletons needed)",
+            default = False)
+
+    objAnimations = BoolProperty(
+            name = "of objects",
+            description = "Export objects animations (without Skeletons)",
             default = False)
 
     animationSource = EnumProperty(
             name = "",
             items = (('ALL_ACTIONS', "All Actions", "Export all the actions in memory"),
+                    ('CURRENT_ACTION', "Current Action", "Export the object's current action linked in the Dope Sheet editor"),
                     ('USED_ACTIONS', "Actions used in tracks", "Export only the actions used in NLA tracks"),
                     ('SELECTED_ACTIONS', "Selected Strips' Actions", "Export the actions of the current selected NLA strips"),
                     ('SELECTED_STRIPS', "Selected Strips", "Export the current selected NLA strips"),
@@ -585,10 +678,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = 'USED_ACTIONS',
             update = update_func)
 
-    animationZero = BoolProperty(
-            name = "Start at frame zero",
-            description = "Force frame zero as the start of Actions, Tracks and Timeline. Otherwise use the first keyframe "
-                          "for Actions or the playback start for Tracks and Timeline (Strips can only use their start)",
+    animationExtraFrame = BoolProperty(
+            name = "Ending extra frame",
+            description = "In Blender to avoid pauses in a looping animation you normally want to skip the last frame "
+                          "when it is the same as the first one. Urho needs this last frame, use this option to add it. "
+                          "It is needed only when using the Timeline or Nla-Tracks.",
             default = True)
 
     animationTriggers = BoolProperty(
@@ -732,6 +826,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Same content as 'Collective', but outputs a Urho3D xml scene (with Octree, PhysicsWorld and DebugRenderer)",
             default = False,
             update = update_func)
+
+    trasfObjects = BoolProperty(
+            name = "Transform objects",
+            description = "Save objects position/rotation/scale, works only with 'Front View = Back'",
+            default = False)
 
     physics = EnumProperty(
             name = "Physics",
@@ -881,6 +980,11 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row = box.row()
         row.prop(settings, "useSubDirs")
         showDirsIcon = 'ZOOMOUT' if settings.showDirs else 'ZOOMIN'
+        if settings.showDirs:
+            subrow = row.row(align=True)
+            subrow.prop(settings, "addDir", text="", icon='TRIA_DOWN_BAR')
+            subrow.prop(settings, "removeDir", text="", icon='TRIA_UP_BAR')
+            subrow.prop(settings, "addSceneDir", text="", icon='GROUP')
         row.prop(settings, "showDirs", text="", icon=showDirsIcon, toggle=False)
         if settings.showDirs:
             dbox = box.box()
@@ -951,21 +1055,29 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             col.prop(settings, "clampBoundingBox")
 
         row = box.row()
-        row.enabled = settings.skeletons
-        row.prop(settings, "animations")
+        column = row.column()
+        column.enabled = settings.skeletons
+        column.prop(settings, "animations")
+        column = row.column()
+        column.enabled = not settings.skeletons
+        column.prop(settings, "objAnimations")
         row.label("", icon='ANIM_DATA')
-        if settings.skeletons and settings.animations:
+        if (settings.skeletons and settings.animations) or settings.objAnimations:
             row = box.row()
             row.separator()
             column = row.column()
             column.prop(settings, "animationSource")
-            column.prop(settings, "animationZero")
+            column.prop(settings, "animationExtraFrame")
             column.prop(settings, "animationTriggers")
             if settings.animationTriggers:
                 row = column.row()
                 row.separator()
                 row.prop(settings, "animationRatioTriggers")
-            column.prop(settings, "onlyKeyedBones")
+            if settings.animations:
+                column.prop(settings, "onlyKeyedBones")
+            col = column.row()
+            col.enabled = 'ACTION' in settings.animationSource
+            col.prop(settings, "actionsByFcurves")
             row = column.row()
             row.prop(settings, "animationPos")
             row.prop(settings, "animationRot")
@@ -1047,6 +1159,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.prop(settings, "scenePrefab")
             row.label("", icon='WORLD')
 
+            if settings.scenePrefab:
+                row = box.row()
+                row.separator()
+                row.separator()
+                row.prop(settings, "trasfObjects")
+
             row = box.row()
             row.separator()
             row.prop(settings, "physics")
@@ -1093,7 +1211,7 @@ def register():
     
     bpy.types.Scene.urho_exportsettings = bpy.props.PointerProperty(type=UrhoExportSettings)
     
-    bpy.context.user_preferences.filepaths.use_relative_paths = False
+    #bpy.context.user_preferences.filepaths.use_relative_paths = False
     
     if not PostLoad in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(PostLoad)
@@ -1199,6 +1317,11 @@ def selectErrors(context, errorsMem, errorName):
 def ExecuteUrhoExport(context):
     global logList
 
+    # Check Blender version
+    if bpy.app.version < (2, 70, 0):
+        log.error( "Blender version 2.70 or later is required" )
+        return False
+
     # Clear log list
     logList[:] = []
     
@@ -1235,10 +1358,13 @@ def ExecuteUrhoExport(context):
     tOptions.doOnlyKeyedBones = settings.onlyKeyedBones
     tOptions.doOnlyDeformBones = settings.onlyDeformBones
     tOptions.doOnlyVisibleBones = settings.onlyVisibleBones
+    tOptions.actionsByFcurves = settings.actionsByFcurves
     tOptions.skinBoneParent = settings.parentBoneSkinning
     tOptions.derigifyArmature = settings.derigify
     tOptions.doAnimations = settings.animations
+    tOptions.doObjAnimations = settings.objAnimations
     tOptions.doAllActions = (settings.animationSource == 'ALL_ACTIONS')
+    tOptions.doCurrentAction = (settings.animationSource == 'CURRENT_ACTION')
     tOptions.doUsedActions = (settings.animationSource == 'USED_ACTIONS')
     tOptions.doSelectedActions = (settings.animationSource == 'SELECTED_ACTIONS')
     tOptions.doSelectedStrips = (settings.animationSource == 'SELECTED_STRIPS')
@@ -1247,7 +1373,7 @@ def ExecuteUrhoExport(context):
     tOptions.doTracks = (settings.animationSource == 'ALL_TRACKS')
     tOptions.doTimeline = (settings.animationSource == 'TIMELINE')
     tOptions.doTriggers = settings.animationTriggers
-    tOptions.doAnimationZero = settings.animationZero
+    tOptions.doAnimationExtraFrame = settings.animationExtraFrame
     tOptions.doAnimationPos = settings.animationPos
     tOptions.doAnimationRot = settings.animationRot
     tOptions.doAnimationSca = settings.animationSca
@@ -1296,6 +1422,9 @@ def ExecuteUrhoExport(context):
     sOptions.noPhysics = (settings.physics == 'DISABLE')
     sOptions.individualPhysics = (settings.physics == 'INDIVIDUAL')
     sOptions.globalPhysics = (settings.physics == 'GLOBAL')
+    sOptions.trasfObjects = settings.trasfObjects
+    sOptions.globalOrigin = tOptions.globalOrigin
+    sOptions.orientation = tOptions.orientation
 
     fOptions.useSubDirs = settings.useSubDirs
     fOptions.fileOverwrite = settings.fileOverwrite
@@ -1322,7 +1451,7 @@ def ExecuteUrhoExport(context):
         return False
 
     if tOptions.mergeObjects and not tOptions.globalOrigin:
-        log.warning("Probably you should use Origin = Global")
+        log.warning("To merge objects you should use Origin = Global")
 
     # Decompose
     if DEBUG: ttt = time.time() #!TIME
@@ -1351,12 +1480,12 @@ def ExecuteUrhoExport(context):
         if DEBUG: print("[TIME] Export in {:.4f} sec".format(time.time() - ttt) ) #!TIME
         if DEBUG: ttt = time.time() #!TIME
 
-        uScene.Load(uExportData, tData.blenderObjectName)
+        uScene.Load(uExportData, tData.blenderObjectName, sOptions)
 
         for uModel in uExportData.models:
+            filepath = GetFilepath(PathType.MODELS, uModel.name, fOptions)
+            uScene.AddFile(PathType.MODELS, uModel.name, filepath[1])
             if uModel.geometries:
-                filepath = GetFilepath(PathType.MODELS, uModel.name, fOptions)
-                uScene.AddFile(PathType.MODELS, uModel.name, filepath[1])
                 if CheckFilepath(filepath[0], fOptions):
                     log.info( "Creating model {:s}".format(filepath[1]) )
                     UrhoWriteModel(uModel, filepath[0]) 

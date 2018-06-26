@@ -8,10 +8,11 @@ from .utils import PathType, GetFilepath, CheckFilepath, \
                    WriteXmlFile
 
 from xml.etree import ElementTree as ET
-from mathutils import Vector
+from mathutils import Vector, Quaternion, Matrix
 import bpy
 import os
 import logging
+import math
 
 log = logging.getLogger("ExportLogger")
 
@@ -31,6 +32,9 @@ class SOptions:
         self.mergeObjects = False
         self.shape = None
         self.shapeItems = None
+        self.trasfObjects = False
+        self.globalOrigin = False
+        self.orientation = Quaternion((1.0, 0.0, 0.0, 0.0))
 
 
 class UrhoSceneMaterial:
@@ -62,13 +66,40 @@ class UrhoSceneModel:
         self.materialsList = []
         # Model bounding box
         self.boundingBox = None
+        # Model position
+        self.position = Vector()
+        # Model rotation
+        self.rotation = Quaternion((1.0, 0.0, 0.0, 0.0))
+        # Model scale
+        self.scale = Vector((1.0, 1.0, 1.0))
 
-    def Load(self, uExportData, uModel, objectName):
+    def Load(self, uExportData, uModel, objectName, sOptions):
         self.name = uModel.name
 
         self.blenderObjectName = objectName
         if objectName:
-            parentObject = bpy.data.objects[objectName].parent
+            object = bpy.data.objects[objectName]
+
+            # Get the local matrix (relative to parent)
+            objMatrix = object.matrix_local
+            # Reorient (normally only root objects need to be re-oriented but 
+            # here we need to undo the previous rotation done by DecomposeMesh)
+            if sOptions.orientation:
+                om = sOptions.orientation.to_matrix().to_4x4()
+                objMatrix = om * objMatrix * om.inverted()
+
+            # Get pos/rot/scale
+            pos = objMatrix.to_translation()
+            rot = objMatrix.to_quaternion()
+            scale = objMatrix.to_scale()
+
+            # Convert pos/rot/scale
+            self.position = Vector((pos.x, pos.z, pos.y))
+            self.rotation = Quaternion((rot.w, -rot.x, -rot.z, -rot.y))
+            self.scale = Vector((scale.x, scale.z, scale.y))
+
+            # Get parent object
+            parentObject = object.parent
             if parentObject and parentObject.type == 'MESH':
                 self.parentObjectName = parentObject.name
 
@@ -84,6 +115,17 @@ class UrhoSceneModel:
 
         self.boundingBox = uModel.boundingBox
 
+# Get the object quaternion rotation, convert if it uses other rotation modes
+def GetQuatenion(obj):
+    # Quaternion mode
+    if obj.rotation_mode == 'QUATERNION':
+        return obj.rotation_quaternion
+    # Axis Angle mode
+    if obj.rotation_mode == 'AXIS_ANGLE':
+        rot = obj.rotation_axis_angle
+        return Quaternion(Vector((rot[1], rot[2], rot[3])), rot[0])
+    # Euler mode
+    return obj.rotation_euler.to_quaternion()
 
 # Hierarchical sorting (based on a post by Hyperboreus at SO)
 class Node:
@@ -142,16 +184,16 @@ class UrhoScene:
 
     def FindFile(self, pathType, name):
         if name is None:
-            return None
+            return ""
         try:
             return self.files[pathType+name]
         except KeyError:
-            return None
+            return ""
 
-    def Load(self, uExportData, objectName):
+    def Load(self, uExportData, objectName, sOptions):
         for uModel in uExportData.models:
             uSceneModel = UrhoSceneModel()
-            uSceneModel.Load(uExportData, uModel, objectName)
+            uSceneModel.Load(uExportData, uModel, objectName, sOptions)
             self.modelsList.append(uSceneModel)
 
     def SortModels(self):
@@ -288,8 +330,6 @@ def IndividualPrefabXml(uScene, uSceneModel, sOptions):
     materials = ""
     for uSceneMaterial in uSceneModel.materialsList:
         file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
-        if file is None:
-            file = ""
         materials += ";" + file
 
     # Generate xml prefab content
@@ -456,6 +496,9 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         m += 2
         compoID += 2
 
+    if sOptions.trasfObjects and sOptions.globalOrigin:
+        log.warning("To export objects transformations you should use Origin = Local")
+
     # Sort the models by parent-child relationship
     uScene.SortModels()
 
@@ -469,8 +512,6 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         materials = ""
         for uSceneMaterial in uSceneModel.materialsList:
             file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
-            if file is None:
-                file = ""
             materials += ";" + file
 
         # Generate XML Content
@@ -492,6 +533,20 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         a["{:d}".format(m)].set("name", "Name")
         a["{:d}".format(m)].set("value", uSceneModel.name)
         m += 1
+
+        if sOptions.trasfObjects:
+            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
+            a["{:d}".format(m)].set("name", "Position")
+            a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.position))
+            m += 1
+            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
+            a["{:d}".format(m)].set("name", "Rotation")
+            a["{:d}".format(m)].set("value", Vector4ToString(uSceneModel.rotation))
+            m += 1
+            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
+            a["{:d}".format(m)].set("name", "Scale")
+            a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.scale))
+            m += 1
 
         a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
         a["{:d}".format(m)].set("type", uSceneModel.type)
@@ -521,15 +576,17 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
                         break
             bbox = uSceneModel.boundingBox
             #Size
-            x = bbox.max[0] - bbox.min[0]
-            y = bbox.max[1] - bbox.min[1]
-            z = bbox.max[2] - bbox.min[2]
-            shapeSize = Vector((x, y, z))
+            shapeSize = Vector()
+            if bbox.min and bbox.max:
+                shapeSize.x = bbox.max[0] - bbox.min[0]
+                shapeSize.y = bbox.max[1] - bbox.min[1]
+                shapeSize.z = bbox.max[2] - bbox.min[2]
             #Offset
-            offsetX = bbox.max[0] - x / 2
-            offsetY = bbox.max[1] - y / 2
-            offsetZ = bbox.max[2] - z / 2
-            shapeOffset = Vector((offsetX, offsetY, offsetZ))
+            shapeOffset = Vector()
+            if bbox.max:
+                shapeOffset.x = bbox.max[0] - shapeSize.x / 2
+                shapeOffset.y = bbox.max[1] - shapeSize.y / 2
+                shapeOffset.z = bbox.max[2] - shapeSize.z / 2
 
             a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
             a["{:d}".format(m)].set("type", "RigidBody")

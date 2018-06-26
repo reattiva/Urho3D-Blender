@@ -4,6 +4,7 @@ io_mesh_urho v0.6
 This is a Blender addon that helps you exporting your meshes, armatures, animations and materials to Urho3D.
 It is an amateur work, done with little knowledge of Urho3D and Blender, but I hope it helps.
 Public domain license. Maintained by reattiva (you can contact me @gmail.com).
+Contributors: https://github.com/reattiva/Urho3D-Blender/graphs/contributors
 
  Installation from releases
 ----------------------------
@@ -105,8 +106,10 @@ Suboptions allow to selectively remove bones from the export:
   (these are bones that don't deform geometry)
   - Only visible bones: skip bones (and their children) for which Armature layer visibility (in Properties > Data > Layers) is not active
   - Clamp bones bounding box: clamp each bone bounding box between bone head & tail. Use case is to ease generation of ragdoll, IK...
-- Animations
-Export the armature animations. Only available when 'Skeletons' option is checked.
+- Animations, Animations of objects
+The first exports the armature animations, it is available only when the 'Skeletons' option is checked. 
+The second exports objects animations. When we are exporting the Timeline animations of multiple object then a single animation is
+created with one track for each object. Use "Origin=Local". 
   'Timeline'
   'All tracks (not muted)'
   'All Strips'
@@ -114,13 +117,11 @@ Export the armature animations. Only available when 'Skeletons' option is checke
   'Selected Strips'
   'Selected Strips Actions'
   'Actions used in tracks'
+  'Current Action'
   'All Actions'
-  - Start at frame zero: long story short, disable (uncheck) this option.
-  If checked this option use frame zero as start. If you have a keyframe at frame zero it should work without problems,
-  but if you don't, then in the frames between 0 and the first keyframe you can see some strange movements and rotations.
-  If unchecked (recommended), the start on the animation is the first keyframe of an Actions or the playback start frame 
-  for Tracks and the Timeline.
-  Using zero as start is probably a bug, however for backward compatibility this option is present and enabled by default. 
+  - Ending extra frame: extend the animation by one frame before it is exported, this should only be useful when you are
+  exporting the Timeline or the Nla-Tracks, and only for looped animations where you had to cut the last frame to get a 
+  smooth playback in Blender. See "Animations last frame" below.
   - Export markers as triggers: for each exported animation which contains markers a xml file is created where the time 
   in seconds and the name of the markers are listed. This xml file can be used in Urho as triggers to signal particular 
   keyframe of the animation. For the Timeline only 'Scene Markers' are exported. To add a 'Scene Marker' go to the Timeline 
@@ -130,6 +131,8 @@ Export the armature animations. Only available when 'Skeletons' option is checke
     - Normalize Time: in the xml file, instead of the number of seconds, use a number from 0 (at the start of the 
       animation) to 1 (at the end)
   - Only keyed bones: export only animation of bones with an animation key.
+  - Read actions by Fcurves: export Actions by evaluating the F-Curves instead of updating the whole scene, it should be 
+  much faster, it can be used only for Actions.
   - Position, Rotation, Scale: select what animation data to export.
 - Geometries
 Here you can select what vertex data to export:
@@ -197,6 +200,39 @@ the alpha. You need to specify these maps by appending "_RGB" and "_ALPHA" respe
 suffixes can be used together but also alone, if they are missing the first layer will be chosen for RGB only.
 For the alpha color layer use a scale of grey (black=transparent, white=opaque), starting from black or white you can
 use the Value slider (V in HSV) to easy change a greyscale color.
+
+=======================
+ Animations last frame
+=======================
+(based on my limited knowledge)
+Urho and Blender manage animations in different manners. What seems correct in Blender is not in Urho and 
+viceversa, so you need to apply some corrections. The errors are more visible in looped animations.
+
+Say that you have a looping animation of 3 frames: at frame 1 you are at position A, at frame 2 you move at
+position B, at frame 3 you move back to A. In frame 1 and 3 you are in the exact same position.
+In Blender if you set "Start=1 and End=3" (which sounds rather reasonable) you'll get an unwanted pause in 
+the playback, this is because Blender awkwardly insists on playing a full frame when it reachs frame 3.
+
+Say you set FPS=2 so you have 0.5s per frame, the Blender timeline is this:
+  0.0s: frame1  ->  0.5s: frame2  ->  1.0s: frame3  ->  1.5s: frame1  ->  2.0s:frame2 ...
+Frame3 and frame1 are played for 1.0s total but frame2 only gets 0.5s, hence the pause.
+In Blender you solve this by setting: "Start=1, End=2".
+
+Urho is different, at "Start=1, End=3" its timeline is:
+  0.0s: frame1  ->  0.5s: frame2  ->  0.999s: frame3  ->  1.0s: frame1  ->  1.5s:frame2 ...
+(see "AnimationState::AddTime" for details)
+There are no problems in Urho. However Urho needs frame3 to be exported. If you export at "Start=1, End=2"
+you'll see a good animation in Blender but a jagged one in Urho.
+To export a looped animation set: 
+  Start=the first frame, End=the last frame which is a copy of the first frame
+
+This is only needed when the exporter uses the Start and End values so:
+  'Timeline', 'All tracks (not muted)', 'Selected Tracks'
+Strips and Actions do not suffer this problem (and in this Blender does not makes sense).
+
+The option "Ending extra frame" tries to solve this by extending the animation by one frame when exporting.
+So you set the animation like Blender wants ("Start=1, End=2" in the example above) then, only if you are
+using the Timeline or a Nla-Track, you set this option to export the animation.
 
 ===========
  Materials
@@ -273,3 +309,59 @@ Select what physics components to create for the prefabs:
 There are 2 ways to set the CollisionShape to use for the exported objects:
   - switch the rendering engine to 'Blender Game', enable 'Collision Bounds' in Properties > Physics and then select your shape
   - select a 'CollisionShape' in the Export panel: this shape is used when 'Merge objects' option is enabled or when 'Collision Bounds' is disabled.
+
+=======================================
+ Batch export by Sergey Lapin (slapin)
+=======================================
+ Example on how to use the exporter in a Python script, see:
+ https://github.com/reattiva/Urho3D-Blender/issues/78
+ To run the script in background/headless mode, good for makefiles and build systems, use the -b flag:
+ blender -b blendfile.blend -P exportscript.py
+
+import bpy, os
+scene = bpy.context.scene
+
+# Set the output folder and subfolder
+basepath = os.getcwd() + "/export/"
+subpath = "Models/example"
+
+# Set the exporter options
+scene.urho_exportsettings.outputPath = basepath
+scene.urho_exportsettings.fileOverwrite = True
+scene.urho_exportsettings.useSubDirs = True
+scene.urho_exportsettings.optimizeIndices = True
+scene.urho_exportsettings.lods = True
+scene.urho_exportsettings.skeletons = True
+scene.urho_exportsettings.materials = True
+scene.urho_exportsettings.textures = True
+scene.urho_exportsettings.prefabs = True
+##scene.urho_exportsettings.individualPrefab = True
+scene.urho_exportsettings.collectivePrefab = True
+scene.urho_exportsettings.geometryPos = True
+scene.urho_exportsettings.geometryNor = True
+scene.urho_exportsettings.geometryUV = True
+scene.urho_exportsettings.geometryTan = True
+scene.urho_exportsettings.geometryWei = True
+scene.urho_exportsettings.source = 'ONLY_SELECTED'
+scene.urho_exportsettings.orientation = 'Y_MINUS'
+scene.urho_exportsettings.modelsPath = subpath
+scene.urho_exportsettings.animationsPath = subpath
+scene.urho_exportsettings.materialsPath = subpath
+scene.urho_exportsettings.texturesPath = subpath
+scene.urho_exportsettings.objectsPath = subpath
+scene.urho_exportsettings.scenesPath = subpath
+
+for ob in scene.objects:
+    if ob.type == 'EMPTY' and not ob.name.endswith("_noexport"):
+        # Select the object and its children, move it to the origin
+        bpy.ops.object.select_all(action='DESELECT')
+        ob.location = (0, 0, 0)
+        ob.select = True
+        scene.objects.active = ob
+        bpy.ops.object.select_grouped(extend=True, type='CHILDREN_RECURSIVE')
+        # Backup and change the scene name to rename the prefab
+        sname = scene.name
+        scene.name = ob.name
+        # Export
+        bpy.ops.urho.export()
+        scene.name = sname

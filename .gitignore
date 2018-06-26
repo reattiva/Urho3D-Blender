@@ -1,9 +1,2 @@
-/*
-io_mesh_urho/__pycache__/
-io_mesh_urho/testing.py
 
-!.gitignore
-!LICENSE
-!README
-!guide.txt
-!io_mesh_urho/
+__pycache__/

@@ -39,7 +39,7 @@ import bpy
 import bmesh
 import math
 import time as ostime
-from mathutils import Vector, Matrix, Quaternion, Color
+from mathutils import Vector, Matrix, Quaternion, Euler, Color
 from collections import OrderedDict
 import os
 import operator
@@ -91,12 +91,13 @@ class TVertex:
 
     # used by the function index() of lists
     def __eq__(self, other):
-        # TODO: can we do without color and weights?
+        # TODO: can we do without weights?
         # TODO: compare floats with a epsilon margin?
         #return (self.__dict__ == other.__dict__)
         return (self.pos == other.pos and 
                 self.normal == other.normal and 
-                self.uv == other.uv)
+                self.uv == other.uv and
+				self.color == other.color)
 
     def isEqual(self, other):
         # TODO: compare floats with a epsilon margin?
@@ -110,6 +111,8 @@ class TVertex:
             hashValue ^= hash(self.normal.x) ^ hash(self.normal.y) ^ hash(self.normal.z)
         if self.uv:
             hashValue ^= hash(self.uv.x) ^ hash(self.uv.y)
+        if self.color:
+            hashValue ^= hash((self.color[3] << 24) | (self.color[2] << 16) | (self.color[1] << 8) | self.color[0])
         return hashValue
     
     def __str__(self):
@@ -319,8 +322,10 @@ class TData:
         self.materialGeometryMap = {}
         # Ordered dictionary of TBone: bone name to TBone
         self.bonesMap = OrderedDict()
-        # List of TAnimation
+        # List of TAnimation, one animation per object
         self.animationsList = []
+        # Common TAnimation, one track per object
+        self.commonAnimation = None
 
 class TOptions:
     def __init__(self):
@@ -331,7 +336,7 @@ class TOptions:
         self.mergeNotMaterials = False
         self.useLods = False
         self.onlySelected = False
-        self.orientation = Quaternion()
+        self.orientation = Quaternion((1.0, 0.0, 0.0, 0.0))
         self.scale = 1.0
         self.globalOrigin = True
         self.bonesGlobalOrigin = False  #useless
@@ -342,10 +347,13 @@ class TOptions:
         self.doOnlyKeyedBones = False
         self.doOnlyDeformBones = False
         self.doOnlyVisibleBones = False
+        self.actionsByFcurves = False
         self.skinBoneParent = False
         self.derigifyArmature = False
         self.doAnimations = True
+        self.doObjAnimations = False
         self.doAllActions = True
+        self.doCurrentAction = False
         self.doUsedActions = False
         self.doSelectedActions = False
         self.doSelectedStrips = False
@@ -354,7 +362,7 @@ class TOptions:
         self.doTracks = False
         self.doTimeline = False
         self.doTriggers = False
-        self.doAnimationZero = True
+        self.doAnimationExtraFrame = True
         self.doAnimationPos = True
         self.doAnimationRot = True
         self.doAnimationSca = True
@@ -413,17 +421,17 @@ def GenerateTangents(tLodLevels, tVertexList, errorsMem):
             if vertex.pos is None:
                 if incompleteUvIndices is not None:
                     incompleteUvIndices.add(vertex.blenderIndex)
-                log.warning("Missing position on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                log.warning("Missing position on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex[1]))
                 return
             if vertex.normal is None:
                 if incompleteUvIndices is not None:
                     incompleteUvIndices.add(vertex.blenderIndex)
-                log.warning("Missing normal on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                log.warning("Missing normal on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex[1]))
                 return
             if vertex.uv is None:
                 if incompleteUvIndices is not None:
                     incompleteUvIndices.add(vertex.blenderIndex)
-                log.warning("Missing UV on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex))
+                log.warning("Missing UV on vertex {:d}, tangent generation cancelled.".format(vertex.blenderIndex[1]))
                 return
             
             # Init tangent (3 components) and bitangent vectors
@@ -1149,6 +1157,53 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
             log.critical("Bone {:s} already present in the map.".format(bone.name))
 
 
+#-------------------------------
+# Right to Left hand conversion
+#-------------------------------
+# 
+# Blender (right hand):  X=right, Y=forward, Z=up,      right hand rotations
+# Urho (left hand):      X=right, Y=up,      Z=forward, left hand rotations
+# 
+# Rotation on X then Y then Z in right hand coordinates:
+#   RZ(z) * RY(y) * RX(x) 
+# =
+# | c(z) -s(z) 0 | |  c(y) 0 s(y) | | 1  0     0   |
+# | s(z)  c(z) 0 | |   0   1  0   | | 0 c(x) -s(x) | 
+# |  0     0   1 | | -s(y) 0 c(y) | | 0 s(x)  c(x) |
+# =
+# | c(y)*c(z) -s(z)  s(y)*c(z) | | 1  0     0   |
+# | c(y)*s(z)  c(z)  s(y)*s(z) | | 0 c(x) -s(x) | 
+# | -s(y)      0     c(y)      | | 0 s(x)  c(x) |
+# =
+# | c(y)*c(z)  -c(x)*s(z)+s(x)*s(y)*c(z)  s(x)*s(z)+c(x)*s(y)*c(z) |   | A B C |
+# | c(y)*s(z)   c(x)*c(z)+s(x)*s(y)*s(z) -s(x)*c(z)+c(x)*s(y)*s(z) | = | D E F |
+# |-s(y)        s(x)*c(y)                 c(x)*c(y)                |   | G H I |
+#
+# The equivalent in left hand coordinates is not:
+#   RZ(-y) * RY(-z) * RX(-x) (NOT THIS)
+# but this:
+#   RY(-z) * RZ(-y) * RX(-x)
+# =
+# |  c(-z) 0 s(-z) | | c(-y) -s(-y) 0 | | 1   0      0   |
+# |   0    1   0   | | s(-y)  c(-y) 0 | | 0 c(-x) -s(-x) | 
+# | -s(-z) 0 c(-z) | |   0     0    1 | | 0 s(-x)  c(-x) |
+# =
+# |  c(z) 0 -s(z) | |  c(y) s(y) 0 | | 1   0     0   |
+# |   0   1   0   | | -s(y) c(y) 0 | | 0  c(x)  s(x) | 
+# |  s(z) 0  c(z) | |   0    0   1 | | 0 -s(x)  c(x) |
+# =
+# | c(y)*c(z)  s(y)*c(z) -s(z) | | 1   0     0   |
+# | -s(y)      c(y)        0   | | 0  c(x)  s(x) | 
+# | c(y)*s(z)  s(y)*s(z)  c(z) | | 0 -s(x)  c(x) |
+# =
+# | c(y)*c(z)  c(x)*s(y)*c(z)           s(x)*s(y)*c(z)-c(x)*s(z) |   | A C B |
+# |-s(y)       c(x)*c(y)                s(x)*c(y)                | = | G I H |
+# | c(y)*s(z)  c(x)*s(y)*s(z)-s(x)*c(z) s(x)*s(y)*s(z)+c(x)*c(z) |   | D F E |
+#
+# So we take the right hand matrix, swap the second and third rows and
+# then swap the second and third columns to get the left hand matrix.
+
+
 #--------------------
 # Decompose animations
 #--------------------
@@ -1162,12 +1217,18 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             self.strip = strip
             self.previous = previous
             self.track = track
-            
+
+    # Check if 'armatureObj' is an armature (skeleton animations) or a mesh (object animations)
+    isArmature = (armatureObj.type == 'ARMATURE')
+
     bonesMap = tData.bonesMap
     animationsList = tData.animationsList
     
     if not armatureObj.animation_data:
-        log.warning('Armature {:s} has no animation data'.format(armatureObj.name))
+        if isArmature:
+            log.warning('Armature {:s} has no animation data'.format(armatureObj.name))
+        else:
+            log.warning('Object {:s} has no animation data'.format(armatureObj.name))
         return
                         
     originMatrix = Matrix.Identity(4)
@@ -1182,6 +1243,11 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     savedAction = armatureObj.animation_data.action
     savedFrame = scene.frame_current
     savedUseNla = armatureObj.animation_data.use_nla
+
+    # When exporting the timeline for multiple objects (objects not armatures) use only
+    # one TAnimation with an object per track, each track must be named after the object.
+    # See the "AnimationState(Node* node, Animation* animation)" constructor.
+    commonAnimation = None
     
     # Here we collect every animation objects we want to export
     animationObjects = []
@@ -1214,20 +1280,31 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
     if tOptions.doAllActions:
         animationObjects.extend(bpy.data.actions)
 
-    # Add Timeline (as the armature object)
+    # Add the current Action (only if it is linked)
+    if tOptions.doCurrentAction:
+        currentAction = armatureObj.animation_data.action
+        if currentAction:
+            animationObjects.append(currentAction)
+
+    # Add the Timeline
     if tOptions.doTimeline:
-        animationObjects.append(armatureObj)
+        if isArmature:
+            animationObjects.append(armatureObj)
+        else:
+            animationObjects.append(scene)
+            # Common animation for multiple object, one object per track
+            commonAnimation = tData.commonAnimation
 
     if not animationObjects:
-        log.warning('Armature {:s} has no animation to export'.format(armatureObj.name))
+        if isArmature:
+            log.warning('Armature {:s} has no animation to export'.format(armatureObj.name))
+        else:
+            log.warning('Object {:s} has no animation to export'.format(armatureObj.name))
         return
     
     for object in animationObjects:
-        tAnimation = TAnimation(object.name)
+        tAnimation = commonAnimation or TAnimation(object.name)
     
-        # Frame when the animation starts
-        frameOffset = 0
-        
         # Objects to save old values
         oldTrackValue = None
         oldStripValue = None
@@ -1241,19 +1318,19 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             # Strips also have their frame range
             startframe = int(object.strip.frame_start)
             endframe = int(object.strip.frame_end + 1)
-            # Strip can start anywhere
-            frameOffset = startframe
         else:
             # For Tracks and Timeline we use the scene playback range
             startframe = int(scene.frame_start)
             endframe = int(scene.frame_end + 1)
 
-        # If we don't want (good idea) to use the frame zero as start, use the first keyframe 
-        # for Actions or the playback start for Tracks and the Timeline
-        if not tOptions.doAnimationZero:
-            frameOffset = startframe
+        # Extra frame at the end of a looping animation, we'll copy the start frame
+        if tOptions.doAnimationExtraFrame:
+            endframe += scene.frame_step
 
-        # Here we collect every action used by this animation, so we can filter the only used bones
+        # Action Fcurves
+        actionFcurves = None
+
+        # Here we collect every action used by this animation, so we can filter the used bones only
         actionSet = set()
 
         # Clear current action on the armature
@@ -1263,9 +1340,15 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             log.error("You need to exit action edit mode")
             return
         
-        # If it is an Action, set the current Action; also disable NLA to disable influences from others NLA tracks
+        # If it is an Action, set the current Action; also disable NLA to disable influences from other NLA tracks
         if isinstance(object, bpy.types.Action):
-            log.info("Decomposing action: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
+            # Get the Fcurves of the Action
+            modeName = ""
+            if tOptions.actionsByFcurves:
+                actionFcurves = object.fcurves
+                if actionFcurves:
+                    modeName = " by F-curves"
+            log.info("Decomposing action{:s}: {:s} (frames {:.1f} {:.1f})".format(modeName, object.name, startframe, endframe-1))
             # Set Action on the armature
             armatureObj.animation_data.use_nla = False
             armatureObj.animation_data.action = object
@@ -1312,12 +1395,18 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     if strip.action:
                         actionSet.add(strip.action)
 
-        if not animationObjects:
-            log.warning("No actions for animation {:s}".format(object.name))
+        # If it is the Timeline for objects, merge all the Tracks (not muted)
+        if isinstance(object, bpy.types.Scene):
+            log.info("Decomposing objects timeline: {:s} (frames {:.1f} {:.1f})".format(object.name, startframe, endframe-1))
+            armatureObj.animation_data.use_nla = True
+            armatureObj.animation_data.action = savedAction
 
-        # Get the bones names
+        # Get the bones names, or the object name
         bones = []
-        if tOptions.doOnlyKeyedBones:
+        if not isArmature:
+            # Object animation: use the object name, one track per object
+            bones.append(armatureObj.name)
+        elif tOptions.doOnlyKeyedBones:
             # Get all the names of the bones used by the actions
             boneSet = set()
             for action in actionSet:
@@ -1340,50 +1429,152 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
             continue
         
         # Reset position/rotation/scale of each bone
-        for poseBone in armatureObj.pose.bones:
-            poseBone.matrix_basis = Matrix.Identity(4)
+        if isArmature:
+            for poseBone in armatureObj.pose.bones:
+                poseBone.matrix_basis = Matrix.Identity(4)
 
         # Progress counter
         progressCur = 0
         progressTot = 0.01 * len(bones) * (endframe-startframe)/scene.frame_step
     
         for boneName in bones:
-            if not boneName in bonesMap:
-                log.warning("Skeleton does not contain bone {:s}".format(boneName))
-                continue
+            if isArmature:
+                if not boneName in bonesMap:
+                    log.warning("Skeleton does not contain bone {:s}".format(boneName))
+                    continue
 
-            if not boneName in armatureObj.pose.bones:
-                log.warning("Pose does not contain bone {:s}".format(boneName))
-                continue
-            
+                if not boneName in armatureObj.pose.bones:
+                    log.warning("Pose does not contain bone {:s}".format(boneName))
+                    continue
+                            
+                # Get the Blender pose bone (bpy.types.PoseBone)
+                poseBone = armatureObj.pose.bones[boneName]
+                parent = poseBone.parent
+            else:
+                # For object animations we use the object itself as the bone
+                poseBone = armatureObj
+                parent = armatureObj.parent
+
+            rot_mode = poseBone.rotation_mode
+
             tTrack = TTrack(boneName)
-            
-            # Get the Blender pose bone (bpy.types.PoseBone)
-            poseBone = armatureObj.pose.bones[boneName]
-            parent = poseBone.parent
-        
+
+            if actionFcurves:
+                # Fcurves data paths
+                position_path = poseBone.path_from_id("location")
+                scale_path = poseBone.path_from_id("scale")
+                if rot_mode == 'QUATERNION':
+                    rotation_path = poseBone.path_from_id("rotation_quaternion")
+                elif rot_mode == 'AXIS_ANGLE':
+                    rotation_path = poseBone.path_from_id("rotation_axis_angle")
+                else:
+                    rotation_path = poseBone.path_from_id("rotation_euler")
+                # Find the Fcurves of the current bone
+                position_curves = []
+                rotation_curves = []
+                scale_curves = []
+                for curve in actionFcurves:
+                    if curve.data_path == position_path:
+                        position_curves.append(curve)
+                    elif curve.data_path == rotation_path:
+                        rotation_curves.append(curve)
+                    elif curve.data_path == scale_path:
+                        scale_curves.append(curve)
+
+                if isArmature:
+                    # Local rest matrix (relative to the parent)
+                    restMatrix = poseBone.bone.matrix_local.copy()
+                    if poseBone.parent:
+                        restMatrix = poseBone.parent.bone.matrix_local.inverted() * restMatrix
+                else:
+                    # Object rest matrix
+                    restMatrix = Matrix()
+
             # For each frame
-            for time in range(startframe, endframe, scene.frame_step):
+            for frameTime in range(startframe, endframe, scene.frame_step):
                 
                 if (progressCur % 40) == 0:
                     print("{:.3f}%\r".format(progressCur / progressTot), end='' )
                 progressCur += 1
-                
-                # Set frame (TODO: this is very slow, try to advance only the armature)
-                # (rna_Scene_frame_set, BKE_scene_update_for_newframe, BKE_animsys_evaluate_animdata)
-                scene.frame_set(time)
-            
-                # This matrix is referred to the armature (object space)
-                poseMatrix = poseBone.matrix.copy()
 
-                if parent:
-                    # Bone matrix relative to its parent bone
-                    poseMatrix = parent.matrix.inverted() * poseMatrix
+                # Check if we are at the last frame
+                isLastFrame = (frameTime >= endframe - scene.frame_step)
+                
+                if actionFcurves:
+                    # Evaluate the Fcurves of the current bone at the current time
+
+                    # Evaluate the position
+                    curvePosition = Vector()
+                    for curve in position_curves:
+                        curvePosition[curve.array_index] = curve.evaluate(frameTime)
+
+                    # Evaluate the rotation
+                    curveRotation = Quaternion((1.0, 0.0, 0.0, 0.0))
+                    if rot_mode == 'QUATERNION':
+                        for curve in rotation_curves:
+                            curveRotation[curve.array_index] = curve.evaluate(frameTime)
+                    elif rot_mode == 'AXIS_ANGLE':
+                        angle_axis = Vector.Fill(4)
+                        for curve in rotation_curves:
+                            angle_axis[curve.array_index] = curve.evaluate(frameTime)
+                        curveRotation = Quaternion(angle_axis.yzw, angle_axis.x)
+                    else:
+                        eulerRotation = Euler((0.0, 0.0, 0.0), rot_mode)
+                        for curve in rotation_curves:
+                            eulerRotation[curve.array_index] = curve.evaluate(frameTime)
+                        curveRotation = eulerRotation.to_quaternion()
+                    # Between keyframes the quaternion components curves are interpolated, so the resulting
+                    # quaternion must be normalized (at keyframes the quaternions are already normalized)
+                    curveRotation.normalize()
+
+                    # Evaluate the scale
+                    curveScale = Vector((1.0, 1.0, 1.0))
+                    for curve in scale_curves:
+                        curveScale[curve.array_index] = curve.evaluate(frameTime)
+
+                    # Create the full trasformation matrix
+                    deltaMatrix = curveRotation.to_matrix().to_4x4()
+                    scaleMatrix = Matrix()
+                    for i in range(0, 3):
+                        scaleMatrix[i][i] = curveScale[i]
+                    deltaMatrix *= scaleMatrix
+                    deltaMatrix.translation = curvePosition
+
+                    # The matrix above is the rotation/scale/translation of the bone with respect to its rest
+                    # position relative to its parent. 
+                    # We apply the rest position to obtain the rotation/scale/translation of the bone with
+                    # respect to its parent.
+                    poseMatrix = restMatrix * deltaMatrix
+
                 else:
-                    # Root bone matrix relative to the armature
-                    if tOptions.orientation:
-                        poseMatrix = tOptions.orientation.to_matrix().to_4x4() * poseMatrix
-                    poseMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) * originMatrix * poseMatrix
+                    # Set frame (TODO: this is very slow, try to advance only the armature)
+                    # (rna_Scene_frame_set, BKE_scene_update_for_newframe, BKE_animsys_evaluate_animdata)
+                    scene.frame_set(frameTime)
+                
+                    if isArmature:
+                        # This matrix is referred to the armature (object space)
+                        poseMatrix = poseBone.matrix.copy()
+
+                        if parent:
+                            # Bone matrix relative to its parent bone
+                            poseMatrix = parent.matrix.inverted() * poseMatrix
+                    else:
+                        # Object animations: use the matrix relative to the parent (local matrix)
+                        poseMatrix = poseBone.matrix_local.copy()
+
+                # Root bone or object with no parent
+                if not parent:
+                    if isArmature:
+                        # Root bone matrix relative to the armature
+                        if tOptions.orientation:
+                            poseMatrix = tOptions.orientation.to_matrix().to_4x4() * poseMatrix
+                        poseMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) * originMatrix * poseMatrix
+                    else:
+                        # Object animations: reorient the animations
+                        if tOptions.orientation:
+                            # Remove the orientation from the object, apply the animation then orient again
+                            om = tOptions.orientation.to_matrix().to_4x4()
+                            poseMatrix = om * poseMatrix * om.inverted()
 
                 if tOptions.scale != 1.0:
                     poseMatrix.translation *= tOptions.scale
@@ -1393,10 +1584,17 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 q = poseMatrix.to_quaternion()
                 s = poseMatrix.to_scale()
                 
-                # Convert position and rotation to left hand:
-                tl = Vector((t.x, t.y, -t.z))
-                ql = Quaternion((q.w, -q.x, -q.y, q.z))
-                sl = Vector((s.x, s.y, s.z))
+                # Convert position, rotation and scale to left hand:
+                if isArmature:
+                    # Bone animation
+                    tl = Vector((t.x, t.y, -t.z))
+                    ql = Quaternion((q.w, -q.x, -q.y, q.z))
+                    sl = Vector((s.x, s.y, s.z))
+                else:
+                    # Object animation
+                    tl = Vector((t.x, t.z, t.y))
+                    ql = Quaternion((q.w, -q.x, -q.z, -q.y))
+                    sl = Vector((s.x, s.z, s.y))
                 
                 if not tOptions.doAnimationPos:
                     tl = None
@@ -1404,10 +1602,11 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     ql = None
                 if not tOptions.doAnimationSca:
                     sl = None
-                    
-                tFrame = TFrame((time - frameOffset) / scene.render.fps, tl, ql, sl)
-                
-                if not tTrack.frames or tTrack.frames[-1].hasMoved(tFrame):
+
+                tFrame = TFrame((frameTime - startframe) / scene.render.fps, tl, ql, sl)
+
+                # Append the frame to the track only if it is the first, the last or if something moved
+                if not tTrack.frames or isLastFrame or tTrack.frames[-1].hasMoved(tFrame):
                     tTrack.frames.append(tFrame)
                 
             if tTrack.frames and (not tOptions.filterSingleKeyFrames or len(tTrack.frames) > 1):
@@ -1461,14 +1660,14 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     markers.append( (frame, frame/totalFrames, marker.name) )
 
             if isinstance(object, bpy.types.Action):
-                getActionPoseMarkers(object, frameOffset)
+                getActionPoseMarkers(object, startframe)
             if isinstance(object, NlaStripLink):
                 getStripPoseMarkers(object.strip)
             if isinstance(object, bpy.types.NlaTrack):
                 for strip in object.strips:
-                    getStripPoseMarkers(strip, frameOffset, scene)
+                    getStripPoseMarkers(strip, startframe, scene)
             if isinstance(object, bpy.types.Object):
-                getSceneMarkers(scene, frameOffset)
+                getSceneMarkers(scene, startframe)
                 # Uncomment this loop to exports Actions Pose Markers instead of Scene Markers
                 ##for track in object.animation_data.nla_tracks:
                 ##    for strip in track.strips:
@@ -1482,8 +1681,11 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                 tTrigger.data = name
                 tAnimation.triggers.append(tTrigger)
 
-        if tAnimation.tracks:
+        if tAnimation.tracks and not commonAnimation:
             animationsList.append(tAnimation)
+            # The first animation becomes the common animation
+            if not tData.commonAnimation:
+                tData.commonAnimation = tAnimation
         
         if isinstance(object, bpy.types.NlaTrack):
             object.is_solo = oldTrackValue
@@ -1515,6 +1717,18 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
     
     verticesMap = {}
     
+    #Save existing shape key values, and set them to zero
+    shapeKeys = meshObj.data.shape_keys
+    if shapeKeys and len(shapeKeys.key_blocks) > 0:
+        keyBlocks = shapeKeys.key_blocks
+    else:
+        keyBlocks = []
+    shapeKeysOldValues = []
+    for j, block in enumerate(keyBlocks):
+        shapeKeysOldValues.append(block.value)
+        if j == 0:
+            continue
+        block.value = 0
     # Create a Mesh datablock with modifiers applied
     # (note: do not apply if not needed, it loses precision)
     mesh = meshObj.to_mesh(scene, tOptions.applyModifiers, tOptions.applySettings)
@@ -1945,16 +2159,30 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         
         log.info("Decomposing shape: {:s} ({:d} vertices)".format(block.name, len(block.data)) )
 
-        # Make a temporary copy of the mesh
-        shapeMesh = mesh.copy()
-        
-        if len(shapeMesh.vertices) != len(block.data):
-            log.error("Vertex count mismatch on shape {:s}.".format(block.name))
-            continue
-        
-        # Appy the shape
-        for i, data in enumerate(block.data):
-            shapeMesh.vertices[i].co = data.co
+        #Set the shape key to 100%
+        block.value = 1
+        #Make a tempory copy of the mesh at this shape.
+        shapeMesh = meshObj.to_mesh(scene, tOptions.applyModifiers, tOptions.applySettings)
+        #Reset the shape key to 0%
+        block.value = 0
+
+        #Check if vertex counts match. If there is a mismatch, it's likely due to vertices fused together in the shape key.
+        if len(shapeMesh.vertices) != len(mesh.vertices):
+            #Try a fallback of converting shape key data directly to vertex data. If there is a vertex count mismatch, it's due to a modifier changing the vertex count (e.g. mirror).
+            if len(shapeMesh.vertices) != len(block.data):
+                # Delete the temporary copy
+                bpy.data.meshes.remove(shapeMesh)
+                #TODO: Handling this requires a method for mapping original vertex points to their final points, which handles cases where the vertex count changes.
+                log.error("Vertex count mismatch on shape {:s}.".format(block.name))
+                continue
+            else:
+                # Delete the temporary copy
+                bpy.data.meshes.remove(shapeMesh)
+                # Make a new temporary copy of the base mesh
+                shapeMesh = mesh.copy()
+                # Apply the shape
+                for i, data in enumerate(block.data):
+                    shapeMesh.vertices[i].co = data.co
 
         # Recalculate normals
         shapeMesh.update(calc_edges = True, calc_tessface = True)
@@ -2075,6 +2303,12 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
 
         # Delete the temporary copy 
         bpy.data.meshes.remove(shapeMesh)
+
+    #Restore shape keys
+    for j, block in enumerate(keyBlocks):
+        if j == 0:
+            continue
+        block.value = shapeKeysOldValues[j]
 
     bpy.data.meshes.remove(mesh)    
 
@@ -2202,6 +2436,9 @@ def Scan(context, tDataList, errorsMem, tOptions):
             tData.objectName = lodName
             if not tOptions.mergeObjects:
                 tData.blenderObjectName = obj.name
+            # Pass around the common animation
+            if len(tDataList) > 0:
+                tData.commonAnimation = tDataList[-1].commonAnimation
             tDataList.append(tData)
             tOptions.lodUpdatedGeometryIndices.clear() # request new LOD
             tOptions.lodDistance = 0.0
@@ -2232,6 +2469,10 @@ def Scan(context, tDataList, errorsMem, tOptions):
                     RestorePosePosition(armatureObj, savedValue)
             else:
                 log.warning("Object {:s} has no armature".format(obj.name) )
+
+        # Object animations (without skeletons)
+        if tOptions.doObjAnimations:
+            DecomposeActions(scene, obj, tData, tOptions)
 
         # Decompose geometries
         if tOptions.doGeometries:
