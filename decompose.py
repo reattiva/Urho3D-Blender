@@ -1773,6 +1773,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
     missingGroups = set()
     overrideBones = set()
     missingBones = set()
+    hasWeight = [0, 0]
 
     # Python trick: C = A and B, if A is False (None, empty list) then C=A, if A is
     # True (object, populated list) then C=B
@@ -2051,7 +2052,9 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                     except KeyError:
                         missingBones.add(boneName)
                 # If we found no bone weight (not even one with weight zero) leave the list equal to None
+                hasWeight[1] += 1
                 if weights:
+                    hasWeight[0] += 1
                     tVertex.weights = weights
                 elif tOptions.doForceElements:
                     tVertex.weights = [(0, 0.0)]
@@ -2114,6 +2117,11 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         log.warning("These parent bones will override the deforms: {:s}".format( ", ".join(overrideBones) ))
     if missingBones:
         log.warning("These parent bones are missing in the armature: {:s}".format( ", ".join(missingBones) ))
+    if tOptions.doGeometryWei:
+        if hasWeight[0] == 0:
+            log.warning("Object {:s} is not affected by any bone".format(meshObj.name))
+        elif hasWeight[0] != hasWeight[1]:
+            print("Object {:s} is only {:.1f}% skinned".format(meshObj.name, 100.0 * hasWeight[0] / hasWeight[1]))
     
     # Generate tangents for the last LOD of every geometry with new vertices
     if tOptions.doGeometryTan:

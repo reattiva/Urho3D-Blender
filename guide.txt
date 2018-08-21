@@ -228,7 +228,7 @@ To export a looped animation set:
 
 This is only needed when the exporter uses the Start and End values so:
   'Timeline', 'All tracks (not muted)', 'Selected Tracks'
-Strips and Actions do not suffer this problem (and in this Blender does not makes sense).
+Strips and Actions do not suffer this problem (and in this Blender does not make sense).
 
 The option "Ending extra frame" tries to solve this by extending the animation by one frame when exporting.
 So you set the animation like Blender wants ("Start=1, End=2" in the example above) then, only if you are
