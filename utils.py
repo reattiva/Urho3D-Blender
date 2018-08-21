@@ -249,7 +249,9 @@ class BinaryFileWriter:
 
     # Writes an ASCII string without terminator
     def writeAsciiStr(self, v):
-        self.buffer.extend(bytes(v, "ascii"))
+        # Non ASCII to '_'
+        v = re.sub(r'[^\x00-\x7f]', '_', v)
+        self.buffer.extend(bytes(v, "ascii", errors="ignore"))
 
     # Writes a 32 bits unsigned int
     def writeUInt(self, v):
