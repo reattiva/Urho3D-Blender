@@ -7,7 +7,7 @@ from .utils import PathType, GetFilepath, CheckFilepath, \
                    FloatToString, Vector3ToString, Vector4ToString, \
                    WriteXmlFile
 
-from xml.etree import ElementTree as ET
+from xml.etree import ElementTree
 from mathutils import Vector, Quaternion, Matrix
 import bpy
 import os
@@ -16,6 +16,24 @@ import math
 
 log = logging.getLogger("ExportLogger")
 
+
+#-------
+# Utils
+#-------
+
+# Get the object quaternion rotation, convert if it uses other rotation modes
+def GetQuatenion(obj):
+    # Quaternion mode
+    if obj.rotation_mode == 'QUATERNION':
+        return obj.rotation_quaternion
+    # Axis Angle mode
+    if obj.rotation_mode == 'AXIS_ANGLE':
+        rot = obj.rotation_axis_angle
+        return Quaternion(Vector((rot[1], rot[2], rot[3])), rot[0])
+    # Euler mode
+    return obj.rotation_euler.to_quaternion()
+
+
 #-------------------------
 # Scene and nodes classes
 #-------------------------
@@ -23,19 +41,17 @@ log = logging.getLogger("ExportLogger")
 # Options for scene and nodes export
 class SOptions:
     def __init__(self):
+        self.doSelectedPrefab = False
         self.doIndividualPrefab = False
         self.doCollectivePrefab = False
         self.doScenePrefab = False
-        self.noPhysics = False
-        self.individualPhysics = False
-        self.globalPhysics = False
+        self.physics = False
         self.mergeObjects = False
         self.shape = None
         self.shapeItems = None
         self.trasfObjects = False
         self.globalOrigin = False
         self.orientation = Quaternion((1.0, 0.0, 0.0, 0.0))
-
 
 class UrhoSceneMaterial:
     def __init__(self):
@@ -44,22 +60,21 @@ class UrhoSceneMaterial:
         # List\Tuple of textures
         self.texturesList = None
 
-    def Load(self, uExportData, uGeometry):
+    def LoadMaterial(self, uExportData, uGeometry):
         self.name = uGeometry.uMaterialName
         for uMaterial in uExportData.materials:
             if uMaterial.name == self.name:
                 self.texturesList = uMaterial.getTextures()
                 break
 
-
 class UrhoSceneModel:
     def __init__(self):
         # Model name
         self.name = None
         # Blender object name
-        self.objectName = None
+        self.blenderName = None
         # Parent Blender object name
-        self.parentObjectName = None
+        self.parentBlenderName = None
         # Model type
         self.type = None
         # List of UrhoSceneMaterial
@@ -73,12 +88,12 @@ class UrhoSceneModel:
         # Model scale
         self.scale = Vector((1.0, 1.0, 1.0))
 
-    def Load(self, uExportData, uModel, objectName, sOptions):
+    def LoadModel(self, uExportData, uModel, blenderObjectName, sOptions):
         self.name = uModel.name
 
-        self.blenderObjectName = objectName
-        if objectName:
-            object = bpy.data.objects[objectName]
+        self.blenderName = blenderObjectName
+        if self.blenderName:
+            object = bpy.data.objects[self.blenderName]
 
             # Get the local matrix (relative to parent)
             objMatrix = object.matrix_local
@@ -101,7 +116,7 @@ class UrhoSceneModel:
             # Get parent object
             parentObject = object.parent
             if parentObject and parentObject.type == 'MESH':
-                self.parentObjectName = parentObject.name
+                self.parentBlenderName = parentObject.name
 
         if len(uModel.bones) > 0 or len(uModel.morphs) > 0:
             self.type = "AnimatedModel"
@@ -110,22 +125,49 @@ class UrhoSceneModel:
 
         for uGeometry in uModel.geometries:
             uSceneMaterial = UrhoSceneMaterial()
-            uSceneMaterial.Load(uExportData, uGeometry)
+            uSceneMaterial.LoadMaterial(uExportData, uGeometry)
             self.materialsList.append(uSceneMaterial)
 
         self.boundingBox = uModel.boundingBox
 
-# Get the object quaternion rotation, convert if it uses other rotation modes
-def GetQuatenion(obj):
-    # Quaternion mode
-    if obj.rotation_mode == 'QUATERNION':
-        return obj.rotation_quaternion
-    # Axis Angle mode
-    if obj.rotation_mode == 'AXIS_ANGLE':
-        rot = obj.rotation_axis_angle
-        return Quaternion(Vector((rot[1], rot[2], rot[3])), rot[0])
-    # Euler mode
-    return obj.rotation_euler.to_quaternion()
+class UrhoScene:
+    def __init__(self, blenderScene):
+        # Blender scene name
+        self.blenderSceneName = blenderScene.name
+        # List of UrhoSceneModel
+        self.modelsList = []
+        # List of all files
+        self.files = {}
+
+    def LoadScene(self, uExportData, blenderObjectName, sOptions):
+        for uModel in uExportData.models:
+            uSceneModel = UrhoSceneModel()
+            uSceneModel.LoadModel(uExportData, uModel, blenderObjectName, sOptions)
+            self.modelsList.append(uSceneModel)
+
+    def AddFile(self, pathType, name, fileUrhoPath):
+        # Note: name must be unique in its type
+        if not name:
+            log.critical("Name null type:{:s} path:{:s}".format(pathType, fileUrhoPath) )
+            return False
+        if name in self.files:
+            log.critical("Already added type:{:s} name:{:s}".format(pathType, name) )
+            return False
+        self.files[pathType+name] = fileUrhoPath
+        return True
+
+    def FindFile(self, pathType, name):
+        if name is None:
+            return ""
+        try:
+            return self.files[pathType+name]
+        except KeyError:
+            return ""
+
+
+#------------
+# Scene sort
+#------------
 
 # Hierarchical sorting (based on a post by Hyperboreus at SO)
 class Node:
@@ -162,57 +204,65 @@ class Tree:
                 names.extend(node.to_list())
         return names
 
-class UrhoScene:
-    def __init__(self, blenderScene):
-        # Blender scene name
-        self.blenderSceneName = blenderScene.name
-        # List of UrhoSceneModel
-        self.modelsList = []
-        # List of all files
-        self.files = {}
+# Sort scene models by parent-child relation
+def SceneModelsSort(scene):
+    names_tree = Tree()
+    for model in scene.modelsList:
+        ##names_tree.push((model.objectName, model.parentBlenderName))
+        names_tree.push((model.name, model.parentBlenderName))
+    # Rearrange the model list in the new order
+    orderedModelsList = []
+    for name in names_tree.to_list():
+        for model in scene.modelsList:
+            ##if model.objectName == name:
+            if model.name == name:
+                orderedModelsList.append(model)
+                # No need to reverse the list, we break straightway
+                scene.modelsList.remove(model)
+                break
+    scene.modelsList = orderedModelsList
 
-    # name must be unique in its type
-    def AddFile(self, pathType, name, fileUrhoPath):
-        if not name:
-            log.critical("Name null type:{:s} path:{:s}".format(pathType, fileUrhoPath) )
-            return False
-        if name in self.files:
-            log.critical("Already added type:{:s} name:{:s}".format(pathType, name) )
-            return False
-        self.files[pathType+name] = fileUrhoPath
-        return True
 
-    def FindFile(self, pathType, name):
-        if name is None:
-            return ""
-        try:
-            return self.files[pathType+name]
-        except KeyError:
-            return ""
+#--------------
+# XML elements
+#--------------
 
-    def Load(self, uExportData, objectName, sOptions):
-        for uModel in uExportData.models:
-            uSceneModel = UrhoSceneModel()
-            uSceneModel.Load(uExportData, uModel, objectName, sOptions)
-            self.modelsList.append(uSceneModel)
+def XmlAddElement(parent, name, ids=None, values=None):
+    if parent is not None:
+        element = ElementTree.SubElement(parent, name)
+    else:
+        element = ElementTree.Element(name)
+    if ids is not None:
+        element.set("id", str(ids[name]))
+        ids[name] += 1
+    if values is not None:
+        for name, value in values.items():
+            element.set(name, str(value))
+    return element
 
-    def SortModels(self):
-        # Sort by parent-child relation
-        names_tree = Tree()
-        for model in self.modelsList:
-            ##names_tree.push((model.objectName, model.parentObjectName))
-            names_tree.push((model.name, model.parentObjectName))
-        # Rearrange the model list in the new order
-        orderedModelsList = []
-        for name in names_tree.to_list():
-            for model in self.modelsList:
-                ##if model.objectName == name:
-                if model.name == name:
-                    orderedModelsList.append(model)
-                    # No need to reverse the list, we break straightway
-                    self.modelsList.remove(model)
-                    break
-        self.modelsList = orderedModelsList
+def XmlAddComponent(parent=None, type=None, ids=None):
+    if parent is not None:
+        element = ElementTree.SubElement(parent, "component")
+    else:
+        element = ElementTree.Element("component")
+    if type is not None:
+        element.set("type", str(type))
+    if ids is not None:
+        element.set("id", str(ids["component"]))
+        ids["component"] += 1
+    return element
+
+def XmlAddAttribute(parent=None, name=None, value=None):
+    if parent is not None:
+        element = ElementTree.SubElement(parent, "attribute")
+    else:
+        element = ElementTree.Element("attribute")
+    if name is not None:
+        element.set("name", str(name))
+    if value is not None:
+        element.set("value", str(value))
+    return element
+
 
 #------------------------
 # Export materials
@@ -220,71 +270,60 @@ class UrhoScene:
 
 def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
 
-    materialElem = ET.Element('material')
-
-    #comment = ET.Comment("Material {:s} created from Blender".format(uMaterial.name))
-    #materialElem.append(comment)
+    material = XmlAddElement(None, "material")
 
     # Technique
     techniquFile = GetFilepath(PathType.TECHNIQUES, uMaterial.techniqueName, fOptions)
-    techniqueElem = ET.SubElement(materialElem, "technique")
-    techniqueElem.set("name", techniquFile[1])
+    XmlAddElement(material, "technique",
+        values={"name": techniquFile[1]} )
 
     # Textures
     if uMaterial.diffuseTexName:
-        diffuseElem = ET.SubElement(materialElem, "texture")
-        diffuseElem.set("unit", "diffuse")
-        diffuseElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.diffuseTexName))
+        XmlAddElement(material, "texture",
+            values={"unit": "diffuse", "name": uScene.FindFile(PathType.TEXTURES, uMaterial.diffuseTexName)} )
 
     if uMaterial.normalTexName:
-        normalElem = ET.SubElement(materialElem, "texture")
-        normalElem.set("unit", "normal")
-        normalElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.normalTexName))
+        XmlAddElement(material, "texture",
+            values={"unit": "normal", "name": uScene.FindFile(PathType.TEXTURES, uMaterial.normalTexName)} )
 
     if uMaterial.specularTexName:
-        specularElem = ET.SubElement(materialElem, "texture")
-        specularElem.set("unit", "specular")
-        specularElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.specularTexName))
+        XmlAddElement(material, "texture",
+            values={"unit": "specular", "name": uScene.FindFile(PathType.TEXTURES, uMaterial.specularTexName)} )
 
     if uMaterial.emissiveTexName:
-        emissiveElem = ET.SubElement(materialElem, "texture")
-        emissiveElem.set("unit", "emissive")
-        emissiveElem.set("name", uScene.FindFile(PathType.TEXTURES, uMaterial.emissiveTexName))
+        XmlAddElement(material, "texture",
+            values={"unit": "emissive", "name": uScene.FindFile(PathType.TEXTURES, uMaterial.emissiveTexName)} )
 
     # PS defines
     if uMaterial.psdefines != "":
-        psdefineElem = ET.SubElement(materialElem, "shader")
-        psdefineElem.set("psdefines", uMaterial.psdefines.lstrip())
+        XmlAddElement(material, "shader",
+            values={"psdefines": uMaterial.psdefines.lstrip()} )
 
     # VS defines
     if uMaterial.vsdefines != "":
-        vsdefineElem = ET.SubElement(materialElem, "shader")
-        vsdefineElem.set("vsdefines", uMaterial.vsdefines.lstrip())
+        XmlAddElement(material, "shader",
+            values={"vsdefines": uMaterial.vsdefines.lstrip()} )
 
     # Parameters
     if uMaterial.diffuseColor:
-        diffuseColorElem = ET.SubElement(materialElem, "parameter")
-        diffuseColorElem.set("name", "MatDiffColor")
-        diffuseColorElem.set("value", Vector4ToString(uMaterial.diffuseColor) )
+        XmlAddElement(material, "parameter",
+            values={"name": "MatDiffColor", "value": Vector4ToString(uMaterial.diffuseColor)} )
 
     if uMaterial.specularColor:
-        specularElem = ET.SubElement(materialElem, "parameter")
-        specularElem.set("name", "MatSpecColor")
-        specularElem.set("value", Vector4ToString(uMaterial.specularColor) )
+        XmlAddElement(material, "parameter",
+            values={"name": "MatSpecColor", "value": Vector4ToString(uMaterial.specularColor)} )
 
     if uMaterial.emissiveColor:
-        emissiveElem = ET.SubElement(materialElem, "parameter")
-        emissiveElem.set("name", "MatEmissiveColor")
-        emissiveElem.set("value", Vector3ToString(uMaterial.emissiveColor) )
+        XmlAddElement(material, "parameter",
+            values={"name": "MatEmissiveColor", "value": Vector3ToString(uMaterial.emissiveColor)} )
 
     if uMaterial.twoSided:
-        cullElem = ET.SubElement(materialElem, "cull")
-        cullElem.set("value", "none")
-        shadowCullElem = ET.SubElement(materialElem, "shadowcull")
-        shadowCullElem.set("value", "none")
+        XmlAddElement(material, "cull",
+            values={"value": "none"} )
+        XmlAddElement(material, "shadowcull",
+            values={"value": "none"} )
 
-    WriteXmlFile(materialElem, filepath, fOptions)
-
+    WriteXmlFile(material, filepath, fOptions)
 
 def UrhoWriteMaterialsList(uScene, uModel, filepath):
 
@@ -317,193 +356,59 @@ def UrhoWriteMaterialsList(uScene, uModel, filepath):
 # Export scene and nodes
 #------------------------
 
-# Generate individual prefabs XML
-def IndividualPrefabXml(uScene, uSceneModel, sOptions):
-
-    # Set first node ID
-    nodeID = 0x1000000
-
-    # Get model file relative path
-    modelFile = uScene.FindFile(PathType.MODELS, uSceneModel.name)
-
-    # Gather materials
-    materials = ""
-    for uSceneMaterial in uSceneModel.materialsList:
-        file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
-        materials += ";" + file
-
-    # Generate xml prefab content
-    rootNodeElem = ET.Element('node')
-    rootNodeElem.set("id", "{:d}".format(nodeID))
-
-    modelNameElem = ET.SubElement(rootNodeElem, "attribute")
-    modelNameElem.set("name", "Name")
-    modelNameElem.set("value", uSceneModel.name)
-
-    typeElem = ET.SubElement(rootNodeElem, "component")
-    typeElem.set("type", uSceneModel.type)
-    typeElem.set("id", "{:d}".format(nodeID))
-
-    modelElem = ET.SubElement(typeElem, "attribute")
-    modelElem.set("name", "Model")
-    modelElem.set("value", "Model;" + modelFile)
-
-    materialElem = ET.SubElement(typeElem, "attribute")
-    materialElem.set("name", "Material")
-    materialElem.set("value", "Material" + materials)
-
-    if not sOptions.noPhysics:
-        #Use model's bounding box to compute CollisionShape's size and offset
-        obj = bpy.data.objects[uSceneModel.name]
-        physicsSettings = [sOptions.shape] #tData.physicsSettings = [sOptions.shape, obj.game.physics_type, obj.game.mass, obj.game.radius, obj.game.velocity_min, obj.game.velocity_max, obj.game.collision_group, obj.game.collision_mask, obj.game.use_ghost] **************************************
-        shapeType = physicsSettings[0]
-        bbox = uSceneModel.boundingBox
-        #Size
-        x = bbox.max[0] - bbox.min[0]
-        y = bbox.max[1] - bbox.min[1]
-        z = bbox.max[2] - bbox.min[2]
-        shapeSize = Vector((x, y, z))
-        #Offset
-        offsetX = bbox.max[0] - x / 2
-        offsetY = bbox.max[1] - y / 2
-        offsetZ = bbox.max[2] - z / 2
-        shapeOffset = Vector((offsetX, offsetY, offsetZ))
-
-        bodyElem = ET.SubElement(rootNodeElem, "component")
-        bodyElem.set("type", "RigidBody")
-        bodyElem.set("id", "{:d}".format(nodeID+1))
-
-        collisionLayerElem = ET.SubElement(bodyElem, "attribute")
-        collisionLayerElem.set("name", "Collision Layer")
-        collisionLayerElem.set("value", "2")
-
-        gravityElem = ET.SubElement(bodyElem, "attribute")
-        gravityElem.set("name", "Use Gravity")
-        gravityElem.set("value", "false")
-
-        shapeElem = ET.SubElement(rootNodeElem, "component")
-        shapeElem.set("type", "CollisionShape")
-        shapeElem.set("id", "{:d}".format(nodeID+2))
-
-        shapeTypeElem = ET.SubElement(shapeElem, "attribute")
-        shapeTypeElem.set("name", "Shape Type")
-        shapeTypeElem.set("value", shapeType)
-
-        if shapeType == "TriangleMesh":
-            physicsModelElem = ET.SubElement(shapeElem, "attribute")
-            physicsModelElem.set("name", "Model")
-            physicsModelElem.set("value", "Model;" + modelFile)
-
-        else:
-            shapeSizeElem = ET.SubElement(shapeElem, "attribute")
-            shapeSizeElem.set("name", "Size")
-            shapeSizeElem.set("value", Vector3ToString(shapeSize))
-
-            shapeOffsetElem = ET.SubElement(shapeElem, "attribute")
-            shapeOffsetElem.set("name", "Offset Position")
-            shapeOffsetElem.set("value", Vector3ToString(shapeOffset))
-
-    return rootNodeElem
-
-
-# Export scene and nodes
 def UrhoExportScene(context, uScene, sOptions, fOptions):
 
-    blenderScene = bpy.data.scenes[uScene.blenderSceneName]
-    
-    '''
-    # Re-order meshes
-    orderedModelsList = []
-    for obj in blenderScene.objects:
-        if obj.type == 'MESH':
-            for uSceneModel in uScene.modelsList:
-                if uSceneModel.objectName == obj.name:
-                    orderedModelsList.append(uSceneModel)
-    uScene.modelsList = orderedModelsList
-    '''
+    ids = {}
+    ids["scene"] = 1
+    ids["node"] = 0x1000000
+    ids["component"] = 1
 
-    a = {}
-    k = 0x1000000   # node ID
-    compoID = k     # component ID
-    m = 0           # internal counter
+    # Root XML element
+    root = XmlAddElement(None, "scene", ids=ids)
+    XmlAddComponent(root, type="Octree", ids=ids)
+    XmlAddComponent(root, type="DebugRenderer", ids=ids)
+    comp = XmlAddComponent(root, type="Light", ids=ids)
+    XmlAddAttribute(comp, name="Light Type", value="Directional")
+    if sOptions.physics:
+        XmlAddComponent(root, type="PhysicsWorld", ids=ids)
 
-    # Create scene components
-    if sOptions.doScenePrefab:
-        sceneRoot = ET.Element('scene')
-        sceneRoot.set("id", "1")
-
-        a["{:d}".format(m)] = ET.SubElement(sceneRoot, "component")
-        a["{:d}".format(m)].set("type", "Octree")
-        a["{:d}".format(m)].set("id", "1")
-
-        a["{:d}".format(m+1)] = ET.SubElement(sceneRoot, "component")
-        a["{:d}".format(m+1)].set("type", "DebugRenderer")
-        a["{:d}".format(m+1)].set("id", "2")
-
-        a["{:d}".format(m+2)] = ET.SubElement(sceneRoot, "component")
-        a["{:d}".format(m+2)].set("type", "Light")
-        a["{:d}".format(m+2)].set("id", "3")
-
-        a["{:d}".format(m+3)] = ET.SubElement(a["{:d}".format(m+2)], "attribute")
-        a["{:d}".format(m+3)].set("name", "Light Type")
-        a["{:d}".format(m+3)].set("value", "Directional")
-        m += 4
-
-        if not sOptions.noPhysics:
-            a["{:d}".format(m)] = ET.SubElement(sceneRoot, "component")
-            a["{:d}".format(m)].set("type", "PhysicsWorld")
-            a["{:d}".format(m)].set("id", "4")
-            m += 1
-
-        # Create Root node
-        root = ET.SubElement(sceneRoot, "node")
-    else: 
-        # Root node
-        root = ET.Element('node') 
-
-    root.set("id", "{:d}".format(k))
-    a["{:d}".format(m)] = ET.SubElement(root, "attribute")
-    a["{:d}".format(m)].set("name", "Name")
-    a["{:d}".format(m)].set("value", uScene.blenderSceneName)
+    # Root node
+    ids["component"] = 0x1000000
+    rootNode = XmlAddElement(root, "node", ids=ids)
+    XmlAddAttribute(rootNode, name="Name", value=uScene.blenderSceneName)
 
     # Create physics stuff for the root node
-    if sOptions.globalPhysics:
-        a["{:d}".format(m)] = ET.SubElement(root, "component")
-        a["{:d}".format(m)].set("type", "RigidBody")
-        a["{:d}".format(m)].set("id", "{:d}".format(compoID))
-
-        a["{:d}".format(m+1)] = ET.SubElement(a["{:d}".format(m)] , "attribute")
-        a["{:d}".format(m+1)].set("name", "Collision Layer")
-        a["{:d}".format(m+1)].set("value", "2")
-
-        a["{:d}".format(m+2)] = ET.SubElement(a["{:d}".format(m)], "attribute")
-        a["{:d}".format(m+2)].set("name", "Use Gravity")
-        a["{:d}".format(m+2)].set("value", "false")
-
-        a["{:d}".format(m+3)] = ET.SubElement(root, "component")
-        a["{:d}".format(m+3)].set("type", "CollisionShape")
-        a["{:d}".format(m+3)].set("id", "{:d}".format(compoID+1))
-        m += 3
-
-        a["{:d}".format(m+1)] = ET.SubElement(a["{:d}".format(m)], "attribute")
-        a["{:d}".format(m+1)].set("name", "Shape Type")
-        a["{:d}".format(m+1)].set("value", "TriangleMesh")
+    if sOptions.physics:
+        comp = XmlAddComponent(rootNode, type="RigidBody", ids=ids)
+        XmlAddAttribute(comp, name="Collision Layer", value="2")
+        XmlAddAttribute(comp, name="Use Gravity", value="false")
 
         physicsModelFile = GetFilepath(PathType.MODELS, "Physics", fOptions)[1]
-        a["{:d}".format(m+2)] = ET.SubElement(a["{:d}".format(m)], "attribute")
-        a["{:d}".format(m+2)].set("name", "Model")
-        a["{:d}".format(m+2)].set("value", "Model;" + physicsModelFile)
-        m += 2
-        compoID += 2
+        comp = XmlAddComponent(rootNode, type="CollisionShape", ids=ids)
+        XmlAddAttribute(comp, name="Shape Type", value="TriangleMesh")
+        XmlAddAttribute(comp, name="Model", value="Model;" + physicsModelFile)
 
     if sOptions.trasfObjects and sOptions.globalOrigin:
         log.warning("To export objects transformations you should use Origin = Local")
 
     # Sort the models by parent-child relationship
-    uScene.SortModels()
+    SceneModelsSort(uScene)
 
-    # Export each decomposed object
+    # Model nodes collection
+    nodes = {}
+
+    # Export each model object as a node
     for uSceneModel in uScene.modelsList:
+
+        # Blender name is surely unique
+        blenderName = uSceneModel.blenderName
+
+        # Find the XML element of the model parent if it exists
+        parent = rootNode
+        if uSceneModel.type == "StaticModel":
+            parentName = uSceneModel.parentBlenderName
+            if parentName in nodes:
+                parent = nodes[parentName]
 
         # Get model file relative path
         modelFile = uScene.FindFile(PathType.MODELS, uSceneModel.name)
@@ -514,149 +419,92 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
             file = uScene.FindFile(PathType.MATERIALS, uSceneMaterial.name)
             materials += ";" + file
 
-        # Generate XML Content
-        k += 1
-        modelNode = uSceneModel.name
-
-        # If child node, parent to parent object instead of root
-        if uSceneModel.type == "StaticModel" and uSceneModel.parentObjectName and (uSceneModel.parentObjectName in a):
-            for usm in uScene.modelsList:
-                if usm.name == uSceneModel.parentObjectName:
-                    a[modelNode] = ET.SubElement(a[usm.name], "node")
-                    break
-        else: 
-            a[modelNode] = ET.SubElement(root, "node")
-
-        a[modelNode].set("id", "{:d}".format(k))
-
-        a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
-        a["{:d}".format(m)].set("name", "Name")
-        a["{:d}".format(m)].set("value", uSceneModel.name)
-        m += 1
-
+        # Generate the node XML content
+        node = XmlAddElement(parent, "node", ids=ids)
+        nodes[blenderName] = node
+        XmlAddAttribute(node, name="Name", value=uSceneModel.name)
         if sOptions.trasfObjects:
-            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
-            a["{:d}".format(m)].set("name", "Position")
-            a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.position))
-            m += 1
-            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
-            a["{:d}".format(m)].set("name", "Rotation")
-            a["{:d}".format(m)].set("value", Vector4ToString(uSceneModel.rotation))
-            m += 1
-            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
-            a["{:d}".format(m)].set("name", "Scale")
-            a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.scale))
-            m += 1
+            XmlAddAttribute(node, name="Position", value=Vector3ToString(uSceneModel.position))
+            XmlAddAttribute(node, name="Rotation", value=Vector4ToString(uSceneModel.rotation))
+            XmlAddAttribute(node, name="Scale", value=Vector3ToString(uSceneModel.scale))
 
-        a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
-        a["{:d}".format(m)].set("type", uSceneModel.type)
-        a["{:d}".format(m)].set("id", "{:d}".format(compoID))
-        m += 1
+        comp = XmlAddComponent(node, type=uSceneModel.type, ids=ids)
+        XmlAddAttribute(comp, name="Model", value="Model;" + modelFile)
+        XmlAddAttribute(comp, name="Material", value="Material" + materials)
 
-        a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)], "attribute")
-        a["{:d}".format(m)].set("name", "Model")
-        a["{:d}".format(m)].set("value", "Model;" + modelFile)
-        m += 1
-
-        a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
-        a["{:d}".format(m)].set("name", "Material")
-        a["{:d}".format(m)].set("value", "Material" + materials)
-        m += 1
-        compoID += 1
-
-        if sOptions.individualPhysics:
-            #Use model's bounding box to compute CollisionShape's size and offset
-            obj = bpy.data.objects[modelNode]
-            physicsSettings = [sOptions.shape] #tData.physicsSettings = [sOptions.shape, obj.game.physics_type, obj.game.mass, obj.game.radius, obj.game.velocity_min, obj.game.velocity_max, obj.game.collision_group, obj.game.collision_mask, obj.game.use_ghost] **************************************
-            shapeType = physicsSettings[0]
-            if not sOptions.mergeObjects and obj.game.use_collision_bounds:
+        if sOptions.physics:
+            shapeType = sOptions.shape
+            obj = bpy.data.objects[blenderName]
+            if not sOptions.mergeObjects and obj.game.use_collision_bounds: ## Blender game engine?
                 for shapeItems in sOptions.shapeItems:
                     if shapeItems[0] == obj.game.collision_bounds_type:
                         shapeType = shapeItems[1]
                         break
+
+            # Use model's bounding box to compute CollisionShape's size and offset
             bbox = uSceneModel.boundingBox
-            #Size
+            # Size
             shapeSize = Vector()
             if bbox.min and bbox.max:
                 shapeSize.x = bbox.max[0] - bbox.min[0]
                 shapeSize.y = bbox.max[1] - bbox.min[1]
                 shapeSize.z = bbox.max[2] - bbox.min[2]
-            #Offset
+            # Offset
             shapeOffset = Vector()
             if bbox.max:
                 shapeOffset.x = bbox.max[0] - shapeSize.x / 2
                 shapeOffset.y = bbox.max[1] - shapeSize.y / 2
                 shapeOffset.z = bbox.max[2] - shapeSize.z / 2
 
-            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
-            a["{:d}".format(m)].set("type", "RigidBody")
-            a["{:d}".format(m)].set("id", "{:d}".format(compoID))
-            m += 1
+            comp = XmlAddComponent(node, type="RigidBody", ids=ids)
+            XmlAddAttribute(comp, name="Collision Layer", value="2")
+            XmlAddAttribute(comp, name="Use Gravity", value="false")
 
-            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)], "attribute")
-            a["{:d}".format(m)].set("name", "Collision Layer")
-            a["{:d}".format(m)].set("value", "2")
-            m += 1
-
-            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
-            a["{:d}".format(m)].set("name", "Use Gravity")
-            a["{:d}".format(m)].set("value", "false")
-            m += 1
-
-            a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
-            a["{:d}".format(m)].set("type", "CollisionShape")
-            a["{:d}".format(m)].set("id", "{:d}".format(compoID+1))
-            m += 1
-
-            a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-1)] , "attribute")
-            a["{:d}".format(m)].set("name", "Shape Type")
-            a["{:d}".format(m)].set("value", shapeType)
-            m += 1
-
+            comp = XmlAddComponent(node, type="CollisionShape", ids=ids)
+            XmlAddAttribute(comp, name="Shape Type", value=shapeType)
             if shapeType == "TriangleMesh":
-                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)], "attribute")
-                a["{:d}".format(m)].set("name", "Model")
-                a["{:d}".format(m)].set("value", "Model;" + modelFile)
-
+                XmlAddAttribute(comp, name="Model", value="Model;" + modelFile)
             else:
-                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-2)] , "attribute")
-                a["{:d}".format(m)].set("name", "Size")
-                a["{:d}".format(m)].set("value", Vector3ToString(shapeSize))
-                m += 1
+                XmlAddAttribute(comp, name="Size", value=Vector3ToString(shapeSize))
+                XmlAddAttribute(comp, name="Offset Position", value=Vector3ToString(shapeOffset))
 
-                a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(m-3)] , "attribute")
-                a["{:d}".format(m)].set("name", "Offset Position")
-                a["{:d}".format(m)].set("value", Vector3ToString(shapeOffset))
-                m += 1
+    # Export full scene: scene elements + scene node
+    if sOptions.doScenePrefab: 
+        filepath = GetFilepath(PathType.SCENES, uScene.blenderSceneName, fOptions)
+        if CheckFilepath(filepath[0], fOptions):
+            log.info( "Creating scene {:s}".format(filepath[1]) )
+            WriteXmlFile(root, filepath[0], fOptions)
 
-            compoID += 2
+    # Export scene node
+    if sOptions.doCollectivePrefab: 
+        filepath = GetFilepath(PathType.OBJECTS, uScene.blenderSceneName, fOptions)
+        if CheckFilepath(filepath[0], fOptions):
+            log.info( "Creating scene prefab {:s}".format(filepath[1]) )
+            WriteXmlFile(rootNode, filepath[0], fOptions)
 
-        # Write individual prefabs
-        if sOptions.doIndividualPrefab:
-            xml = IndividualPrefabXml(uScene, uSceneModel, sOptions)
-            filepath = GetFilepath(PathType.OBJECTS, uSceneModel.name, fOptions)
+    # Export individual nodes including child nodes
+    if sOptions.doIndividualPrefab or sOptions.doSelectedPrefab:
+        usedNames = []
+        selectedNames = []
+        for obj in context.selected_objects:
+            selectedNames.append(obj.name)
+
+        for blenderName, xmlNode in nodes.items():
+            if sOptions.doSelectedPrefab and not blenderName in selectedNames: 
+                continue
+            # From Blender name to plain name, this is useful for LODs but we can have 
+            # duplicates, in that case fallback to the Blender name
+            name = None
+            for uSceneModel in uScene.modelsList:
+                if uSceneModel.blenderName == blenderName:
+                    name = uSceneModel.name
+                    break
+            if not name or name in usedNames:
+                name = blenderName
+            usedNames.append(name)
+
+            filepath = GetFilepath(PathType.OBJECTS, name, fOptions)
             if CheckFilepath(filepath[0], fOptions):
-                log.info( "Creating prefab {:s}".format(filepath[1]) )
-                WriteXmlFile(xml, filepath[0], fOptions)
+                log.info( "Creating object prefab {:s}".format(filepath[1]) )
+                WriteXmlFile(xmlNode, filepath[0], fOptions)
 
-        # Merging objects equates to an individual export. And collective equates to individual, so we can skip collective
-        if sOptions.mergeObjects and sOptions.doScenePrefab: 
-            filepath = GetFilepath(PathType.SCENES, uScene.blenderSceneName, fOptions)
-            if CheckFilepath(filepath[0], fOptions):
-                log.info( "Creating scene prefab {:s}".format(filepath[1]) )
-                WriteXmlFile(sceneRoot, filepath[0], fOptions)
-
-    # Write collective and scene prefab files
-    if not sOptions.mergeObjects:
-
-        if sOptions.doCollectivePrefab:
-            filepath = GetFilepath(PathType.OBJECTS, uScene.blenderSceneName, fOptions)
-            if CheckFilepath(filepath[0], fOptions):
-                log.info( "Creating collective prefab {:s}".format(filepath[1]) )
-                WriteXmlFile(root, filepath[0], fOptions)
-
-        if sOptions.doScenePrefab:
-            filepath = GetFilepath(PathType.SCENES, uScene.blenderSceneName, fOptions)
-            if CheckFilepath(filepath[0], fOptions):
-                log.info( "Creating scene prefab {:s}".format(filepath[1]) )
-                WriteXmlFile(sceneRoot, filepath[0], fOptions)
