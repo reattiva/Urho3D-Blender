@@ -375,7 +375,10 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
     # Root node
     ids["component"] = 0x1000000
     rootNode = XmlAddElement(root, "node", ids=ids)
+    XmlAddAttribute(rootNode, name="Is Enabled", value="true") #extra
     XmlAddAttribute(rootNode, name="Name", value=uScene.blenderSceneName)
+    XmlAddAttribute(rootNode, name="Tags") #extra
+    XmlAddAttribute(rootNode, name="Variables") #extra
 
     # Create physics stuff for the root node
     if sOptions.physics:
@@ -422,11 +425,14 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         # Generate the node XML content
         node = XmlAddElement(parent, "node", ids=ids)
         nodes[blenderName] = node
+        XmlAddAttribute(node, name="Is Enabled", value="true") #extra
         XmlAddAttribute(node, name="Name", value=uSceneModel.name)
+        XmlAddAttribute(node, name="Tags") #extra
         if sOptions.trasfObjects:
             XmlAddAttribute(node, name="Position", value=Vector3ToString(uSceneModel.position))
             XmlAddAttribute(node, name="Rotation", value=Vector4ToString(uSceneModel.rotation))
             XmlAddAttribute(node, name="Scale", value=Vector3ToString(uSceneModel.scale))
+        XmlAddAttribute(node, name="Variables") #extra
 
         comp = XmlAddComponent(node, type=uSceneModel.type, ids=ids)
         XmlAddAttribute(comp, name="Model", value="Model;" + modelFile)

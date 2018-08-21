@@ -189,9 +189,7 @@ def XmlToPrettyString(elem):
     rough = ET.tostring(elem, 'utf-8')
     reparsed = minidom.parseString(rough)
     pretty = reparsed.toprettyxml(indent="\t")
-    i = pretty.rfind("?>")
-    if i >= 0:
-        pretty = pretty[i+2:]
+    pretty = pretty.replace("/>", " />")
     return pretty.strip()
 
 
