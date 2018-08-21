@@ -938,6 +938,20 @@ class UrhoExportOperator(bpy.types.Operator):
     def invoke(self, context, event):
         return self.execute(context)
 
+# Export without report window
+class UrhoExportCommandOperator(bpy.types.Operator):
+    """ Start exporting """
+    
+    bl_idname = "urho.exportcommand"
+    bl_label = "Export command"
+  
+    def execute(self, context):
+        ExecuteAddon(context, silent=True)
+        return {'FINISHED'}
+ 
+    def invoke(self, context, event):
+        return self.execute(context)
+
 
 # The export panel, here we draw the panel using properties we have created earlier
 class UrhoExportRenderPanel(bpy.types.Panel):
@@ -1204,6 +1218,7 @@ def register():
     bpy.utils.register_class(UrhoAddonPreferences)
     bpy.utils.register_class(UrhoExportSettings)
     bpy.utils.register_class(UrhoExportOperator)
+    bpy.utils.register_class(UrhoExportCommandOperator)
     bpy.utils.register_class(UrhoExportResetOperator)
     bpy.utils.register_class(UrhoExportResetPathsOperator)
     bpy.utils.register_class(UrhoExportRenderPanel)
@@ -1232,6 +1247,7 @@ def unregister():
     bpy.utils.unregister_class(UrhoAddonPreferences)
     bpy.utils.unregister_class(UrhoExportSettings)
     bpy.utils.unregister_class(UrhoExportOperator)
+    bpy.utils.unregister_class(UrhoExportCommandOperator)
     bpy.utils.unregister_class(UrhoExportResetOperator)
     bpy.utils.unregister_class(UrhoExportResetPathsOperator)    
     bpy.utils.unregister_class(UrhoExportRenderPanel)
@@ -1574,7 +1590,7 @@ def ExecuteUrhoExport(context):
     return True
 
 
-def ExecuteAddon(context):
+def ExecuteAddon(context, silent=False):
 
     startTime = time.time()
     print("----------------------Urho export start----------------------")    
@@ -1582,7 +1598,8 @@ def ExecuteAddon(context):
     log.setLevel(logging.DEBUG)
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
     
-    bpy.ops.urho.report('INVOKE_DEFAULT')
+    if not silent:
+        bpy.ops.urho.report('INVOKE_DEFAULT')
 
     
 if __name__ == "__main__":
