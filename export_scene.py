@@ -13,6 +13,7 @@ import bpy
 import os
 import logging
 import math
+import copy
 
 log = logging.getLogger("ExportLogger")
 
@@ -225,19 +226,23 @@ def SceneModelsSort(scene):
 # XML elements
 #--------------
 
-def XmlAddElement(parent, name, ids=None, values=None):
+# Create an XML element using 'tag' as name and the dictionary  'values'
+# as attributes, if 'parent' is None a root element is created.
+def XmlAddElement(parent, tag, ids=None, values=None):
     if parent is not None:
-        element = ElementTree.SubElement(parent, name)
+        element = ElementTree.SubElement(parent, tag)
     else:
-        element = ElementTree.Element(name)
+        element = ElementTree.Element(tag)
     if ids is not None:
-        element.set("id", str(ids[name]))
-        ids[name] += 1
+        element.set("id", str(ids[tag]))
+        ids[tag] += 1
     if values is not None:
         for name, value in values.items():
             element.set(name, str(value))
     return element
 
+# Adds to parent an XML element with name "component" and attributes 
+# "type" and "id", the value of "id" is taken from the 'ids' dictionary.
 def XmlAddComponent(parent=None, type=None, ids=None):
     if parent is not None:
         element = ElementTree.SubElement(parent, "component")
@@ -250,6 +255,8 @@ def XmlAddComponent(parent=None, type=None, ids=None):
         ids["component"] += 1
     return element
 
+# Adds to parent an XML element with name "attribute" and attributes 
+# "name" and "value".
 def XmlAddAttribute(parent=None, name=None, value=None):
     if parent is not None:
         element = ElementTree.SubElement(parent, "attribute")
@@ -261,6 +268,32 @@ def XmlAddAttribute(parent=None, name=None, value=None):
         element.set("value", str(value))
     return element
 
+# Removes from 'node' all the child nodes whose attribute 'name' is not 
+# in the list 'values'.
+def XmlNodeFilter(node, name, values):
+    for child in list(node):
+        if child.tag != "node":
+            continue
+        value = child.get(name, None)
+        if value in values:
+            XmlNodeFilter(child, name, values)
+        else:
+            node.remove(child)
+
+# Renumber the attribute "id" of 'node' and all its children, each different
+# element tag has a different numbering starting from 1. Use the dictionary
+# 'ids' ("tag":number) to specify a custom start.
+def XmlIdSet(node, ids = None):
+    if ids is None: # dict as default arg is static
+        ids = {}
+    tag = node.tag
+    if tag not in ids:
+        ids[tag] = 1
+    if node.get("id", False):
+        node.set("id", str(ids[tag]))
+        ids[tag] += 1
+    for child in list(node):
+        XmlIdSet(child, ids)
 
 #------------------------
 # Export materials
@@ -394,8 +427,8 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
     # Sort the models by parent-child relationship
     SceneModelsSort(uScene)
 
-    # Model nodes collection
-    nodes = {}
+    # Blender object name to xml node collection
+    xmlNodes = {}
 
     # Export each model object as a node
     for uSceneModel in uScene.modelsList:
@@ -407,8 +440,8 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         parent = rootNode
         if uSceneModel.type == "StaticModel":
             parentName = uSceneModel.parentBlenderName
-            if parentName in nodes:
-                parent = nodes[parentName]
+            if parentName in xmlNodes:
+                parent = xmlNodes[parentName]
 
         # Get model file relative path
         modelFile = uScene.FindFile(PathType.MODELS, uSceneModel.name)
@@ -421,7 +454,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
 
         # Generate the node XML content
         node = XmlAddElement(parent, "node", ids=ids)
-        nodes[blenderName] = node
+        xmlNodes[blenderName] = node
         XmlAddAttribute(node, name="Is Enabled", value="true") #extra
         XmlAddAttribute(node, name="Name", value=uSceneModel.name)
         XmlAddAttribute(node, name="Tags") #extra
@@ -464,6 +497,11 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
                 XmlAddAttribute(comp, name="Size", value=Vector3ToString(shapeSize))
                 XmlAddAttribute(comp, name="Offset Position", value=Vector3ToString(shapeOffset))
 
+    # Names of Blender selected objects
+    selectedNames = []
+    for obj in context.selected_objects:
+        selectedNames.append(obj.name)
+
     # Export full scene: scene elements + scene node
     if sOptions.doFullScene: 
         filepath = GetFilepath(PathType.SCENES, uScene.blenderSceneName, fOptions)
@@ -471,22 +509,30 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
             log.info( "Creating full scene {:s}".format(filepath[1]) )
             WriteXmlFile(root, filepath[0], fOptions)
 
-    # Export collective node
-    if sOptions.doCollectivePrefab: 
+    # Export a collective node
+    if sOptions.doCollectivePrefab:
+        rootNodeCopy = copy.deepcopy(rootNode)      
+        if sOptions.onlySelected:
+            # Get the IDs of the node of the selected objects
+            selectedIds = []
+            for blenderName, xmlNode in xmlNodes.items():
+                if blenderName in selectedNames:
+                    selectedIds.append(xmlNode.get("id", None))
+            # Keep only the nodes with the attribute "id" in the list
+            XmlNodeFilter(rootNodeCopy, "id", selectedIds)
+
+        XmlIdSet(rootNodeCopy)
         filepath = GetFilepath(PathType.OBJECTS, uScene.blenderSceneName, fOptions)
         if CheckFilepath(filepath[0], fOptions):
             log.info( "Creating collective prefab {:s}".format(filepath[1]) )
-            WriteXmlFile(rootNode, filepath[0], fOptions)
+            WriteXmlFile(rootNodeCopy, filepath[0], fOptions)
 
     # Export objects nodes (including their children)
     if sOptions.doObjectsPrefab:
         usedNames = []
-        selectedNames = []
-        for obj in context.selected_objects:
-            selectedNames.append(obj.name)
-
         noObject = True
-        for blenderName, xmlNode in nodes.items():
+        for blenderName, xmlNode in xmlNodes.items():
+            # Filter selected objects
             if sOptions.onlySelected and not blenderName in selectedNames: 
                 continue
             noObject = False
@@ -501,6 +547,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
                 name = blenderName
             usedNames.append(name)
 
+            XmlIdSet(xmlNode)
             filepath = GetFilepath(PathType.OBJECTS, name, fOptions)
             if CheckFilepath(filepath[0], fOptions):
                 log.info( "Creating object prefab {:s}".format(filepath[1]) )

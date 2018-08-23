@@ -1178,6 +1178,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.prop(settings, "collectivePrefab")
             row.label("", icon='WORLD')
 
+            if settings.collectivePrefab:
+                row = box.row()
+                row.separator()
+                row.separator()
+                row.prop(settings, "selectedObjects")
+
             row = box.row()
             row.separator()
             row.prop(settings, "fullScene")
