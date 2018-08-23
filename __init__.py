@@ -411,7 +411,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.scenePrefab = False
         self.trasfObjects = False
         self.physics = False
-        self.shape = 'TRIANGLEMESH'
+        self.collisionShape = 'TRIANGLEMESH'
 
     # Revert the output paths back to their default values
     def reset_paths(self, context, forced):
@@ -849,9 +849,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     shapeItems = [ ('BOX', "Box", ""), ('CAPSULE', "Capsule", ""), ('CONE', "Cone", ""), \
                 ('CONVEXHULL', "ConvexHull", ""), ('CYLINDER', "Cylinder", ""), ('SPHERE', "Sphere", ""), \
                 ('STATICPLANE', "StaticPlane", ""), ('TRIANGLEMESH', "TriangleMesh", "") ]
-    shape = EnumProperty(
+    collisionShape = EnumProperty(
             name = "CollisionShape",
-            description = "CollisionShape type. Discarded if 'Collision Bounds' is checked in Physics panel.",
+            description = "Collision shape type",
             items = shapeItems,
             default = 'TRIANGLEMESH',
             update = update_func2)
@@ -1201,7 +1201,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
                 row = box.row()
                 row.separator()
                 row.separator()
-                row.prop(settings, "shape")
+                row.prop(settings, "collisionShape")
                 row.label("", icon='GROUP')
 
 #--------------------
@@ -1442,16 +1442,13 @@ def ExecuteUrhoExport(context):
     sOptions.doIndividualPrefab = settings.individualPrefab
     sOptions.doCollectivePrefab = settings.collectivePrefab
     sOptions.doScenePrefab = settings.scenePrefab
-    sOptions.mergeObjects = settings.merge
     sOptions.trasfObjects = settings.trasfObjects
     sOptions.globalOrigin = tOptions.globalOrigin
     sOptions.orientation = tOptions.orientation
     sOptions.physics = settings.physics
-    sOptions.shapeItems = settings.shapeItems
-    for shapeItems in settings.shapeItems:
-        if shapeItems[0] == settings.shape:
-            tOptions.shape = shapeItems[1]
-            sOptions.shape = shapeItems[1]
+    for shapeItem in settings.shapeItems:
+        if shapeItem[0] == settings.collisionShape:
+            sOptions.collisionShape = shapeItem[1]
             break
 
     fOptions.useSubDirs = settings.useSubDirs
@@ -1619,4 +1616,4 @@ def ExecuteAddon(context, silent=False):
 
     
 if __name__ == "__main__":
-	register()
+    register()

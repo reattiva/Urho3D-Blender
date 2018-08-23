@@ -46,9 +46,7 @@ class SOptions:
         self.doCollectivePrefab = False
         self.doScenePrefab = False
         self.physics = False
-        self.mergeObjects = False
-        self.shape = None
-        self.shapeItems = None
+        self.collisionShape = None
         self.trasfObjects = False
         self.globalOrigin = False
         self.orientation = Quaternion((1.0, 0.0, 0.0, 0.0))
@@ -184,12 +182,12 @@ class Node:
             
 class Tree:
     def __init__(self):
-    	self.nodes = {}
+        self.nodes = {}
 
     def push(self, item):
         name, parent = item
         if name not in self.nodes:
-        	self.nodes[name] = Node(name)
+            self.nodes[name] = Node(name)
         if parent:
             if parent not in self.nodes:
                 self.nodes[parent] = Node(parent)
@@ -439,14 +437,6 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         XmlAddAttribute(comp, name="Material", value="Material" + materials)
 
         if sOptions.physics:
-            shapeType = sOptions.shape
-            obj = bpy.data.objects[blenderName]
-            if not sOptions.mergeObjects and obj.game.use_collision_bounds: ## Blender game engine?
-                for shapeItems in sOptions.shapeItems:
-                    if shapeItems[0] == obj.game.collision_bounds_type:
-                        shapeType = shapeItems[1]
-                        break
-
             # Use model's bounding box to compute CollisionShape's size and offset
             bbox = uSceneModel.boundingBox
             # Size
@@ -467,6 +457,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
             XmlAddAttribute(comp, name="Use Gravity", value="false")
 
             comp = XmlAddComponent(node, type="CollisionShape", ids=ids)
+            shapeType = sOptions.collisionShape
             XmlAddAttribute(comp, name="Shape Type", value=shapeType)
             if shapeType == "TriangleMesh":
                 XmlAddAttribute(comp, name="Model", value="Model;" + modelFile)
