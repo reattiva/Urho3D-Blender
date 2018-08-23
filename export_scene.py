@@ -41,10 +41,10 @@ def GetQuatenion(obj):
 # Options for scene and nodes export
 class SOptions:
     def __init__(self):
-        self.doSelectedPrefab = False
-        self.doIndividualPrefab = False
+        self.doObjectsPrefab = False
         self.doCollectivePrefab = False
-        self.doScenePrefab = False
+        self.doFullScene = False
+        self.onlySelected = False
         self.physics = False
         self.collisionShape = None
         self.trasfObjects = False
@@ -466,29 +466,31 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
                 XmlAddAttribute(comp, name="Offset Position", value=Vector3ToString(shapeOffset))
 
     # Export full scene: scene elements + scene node
-    if sOptions.doScenePrefab: 
+    if sOptions.doFullScene: 
         filepath = GetFilepath(PathType.SCENES, uScene.blenderSceneName, fOptions)
         if CheckFilepath(filepath[0], fOptions):
-            log.info( "Creating scene {:s}".format(filepath[1]) )
+            log.info( "Creating full scene {:s}".format(filepath[1]) )
             WriteXmlFile(root, filepath[0], fOptions)
 
-    # Export scene node
+    # Export collective node
     if sOptions.doCollectivePrefab: 
         filepath = GetFilepath(PathType.OBJECTS, uScene.blenderSceneName, fOptions)
         if CheckFilepath(filepath[0], fOptions):
-            log.info( "Creating scene prefab {:s}".format(filepath[1]) )
+            log.info( "Creating collective prefab {:s}".format(filepath[1]) )
             WriteXmlFile(rootNode, filepath[0], fOptions)
 
-    # Export individual nodes including child nodes
-    if sOptions.doIndividualPrefab or sOptions.doSelectedPrefab:
+    # Export objects nodes (including their children)
+    if sOptions.doObjectsPrefab:
         usedNames = []
         selectedNames = []
         for obj in context.selected_objects:
             selectedNames.append(obj.name)
 
+        noObject = True
         for blenderName, xmlNode in nodes.items():
-            if sOptions.doSelectedPrefab and not blenderName in selectedNames: 
+            if sOptions.onlySelected and not blenderName in selectedNames: 
                 continue
+            noObject = False
             # From Blender name to plain name, this is useful for LODs but we can have 
             # duplicates, in that case fallback to the Blender name
             name = None
@@ -504,4 +506,5 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
             if CheckFilepath(filepath[0], fOptions):
                 log.info( "Creating object prefab {:s}".format(filepath[1]) )
                 WriteXmlFile(xmlNode, filepath[0], fOptions)
-
+        if noObject:
+            log.warning("No object selected for prefab export")

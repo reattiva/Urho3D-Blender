@@ -405,10 +405,10 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.textures = False
 
         self.prefabs = True
-        self.individualPrefab = False
-        self.selectedPrefab = False
+        self.objectsPrefab = False
         self.collectivePrefab = False
-        self.scenePrefab = False
+        self.fullScene = False
+        self.selectedObjects = False
         self.trasfObjects = False
         self.physics = False
         self.collisionShape = 'TRIANGLEMESH'
@@ -812,15 +812,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     # --- Nodes/Prefabs ---
 
-    individualPrefab = BoolProperty(
-            name = "Individual prefabs",
+    objectsPrefab = BoolProperty(
+            name = "Objects prefabs",
             description = "Create a prefab/node for each object in the current scene",
-            default = False,
-            update = update_func)
-
-    selectedPrefab = BoolProperty(
-            name = "Selected objects prefabs",
-            description = "Create a prefab/node for each object selected",
             default = False,
             update = update_func)
 
@@ -830,9 +824,15 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False,
             update = update_func)
 
-    scenePrefab = BoolProperty(
-            name = "Scene",
+    fullScene = BoolProperty(
+            name = "Full scene",
             description = "Create a Urho3D scene",
+            default = False,
+            update = update_func)
+
+    selectedObjects = BoolProperty(
+            name = "Only selected objects",
+            description = "Create a prefab/node for selected object only",
             default = False,
             update = update_func)
 
@@ -1164,14 +1164,14 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         if settings.prefabs:
             row = box.row()
             row.separator()
-            row.prop(settings, "individualPrefab")
+            row.prop(settings, "objectsPrefab")
             row.label("", icon='MOD_BUILD')
 
-            if settings.individualPrefab:
+            if settings.objectsPrefab:
                 row = box.row()
                 row.separator()
                 row.separator()
-                row.prop(settings, "selectedPrefab")
+                row.prop(settings, "selectedObjects")
 
             row = box.row()
             row.separator()
@@ -1180,7 +1180,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 
             row = box.row()
             row.separator()
-            row.prop(settings, "scenePrefab")
+            row.prop(settings, "fullScene")
             row.label("", icon='URL')
 
             row = box.row()
@@ -1438,10 +1438,10 @@ def ExecuteUrhoExport(context):
     elif settings.orientation == 'Z_MINUS':
         tOptions.orientation = Quaternion((1.0,0.0,0.0), radians(90.0)) * Quaternion((0.0,0.0,1.0), radians(180.0))
 
-    sOptions.doSelectedPrefab = settings.selectedPrefab
-    sOptions.doIndividualPrefab = settings.individualPrefab
+    sOptions.doObjectsPrefab = settings.objectsPrefab
     sOptions.doCollectivePrefab = settings.collectivePrefab
-    sOptions.doScenePrefab = settings.scenePrefab
+    sOptions.doFullScene = settings.fullScene
+    sOptions.onlySelected = settings.selectedObjects
     sOptions.trasfObjects = settings.trasfObjects
     sOptions.globalOrigin = tOptions.globalOrigin
     sOptions.orientation = tOptions.orientation
@@ -1594,10 +1594,10 @@ def ExecuteUrhoExport(context):
     
     # Export scene and nodes
     if settings.prefabs:
-        if not sOptions.doIndividualPrefab and not sOptions.doCollectivePrefab and not sOptions.doScenePrefab:
-            log.warning("Select a prefab to export")
+        if not sOptions.doObjectsPrefab and not sOptions.doCollectivePrefab and not sOptions.doFullScene:
+            log.warning("Select the type of prefabs you want to export")
         else:
-            log.info("---- Exporting Prefabs Scene ----")
+            log.info("---- Exporting Prefabs and Scene ----")
             UrhoExportScene(context, uScene, sOptions, fOptions)
 
     return True
