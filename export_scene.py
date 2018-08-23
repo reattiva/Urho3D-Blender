@@ -358,7 +358,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
 
     ids = {}
     ids["scene"] = 1
-    ids["node"] = 0x1000000
+    ids["node"] = 1
     ids["component"] = 1
 
     # Root XML element
@@ -371,7 +371,6 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         XmlAddComponent(root, type="PhysicsWorld", ids=ids)
 
     # Root node
-    ids["component"] = 0x1000000
     rootNode = XmlAddElement(root, "node", ids=ids)
     XmlAddAttribute(rootNode, name="Is Enabled", value="true") #extra
     XmlAddAttribute(rootNode, name="Name", value=uScene.blenderSceneName)
