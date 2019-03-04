@@ -236,6 +236,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Use Fcurves only for actions
         if not ('ACTION' in self.animationSource):
             self.actionsByFcurves = False
+        # Morphs require 'Apply modifiers' (not sure)
+        if self.morphs:
+            self.modifiers = True
         # Morphs need geometries    
         if not self.geometries:
             self.morphs = False
@@ -541,7 +544,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     modifiers = BoolProperty(
             name = "Apply modifiers",
             description = "Apply the object modifiers before exporting",
-            default = False)
+            default = False,
+            update = update_func)
 
     modifiersRes = EnumProperty(
             name = "Modifiers setting",
@@ -772,8 +776,9 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     morphs = BoolProperty(
             name = "Morphs (shape keys)",
-            description = "Export vertex morphs (Geometries needed)",
-            default = False)
+            description = "Export vertex morphs (Geometries and Apply modifiers needed)",
+            default = False,
+            update = update_func)
 
     morphNor = BoolProperty(
             name = "Normal",
