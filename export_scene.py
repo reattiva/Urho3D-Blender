@@ -100,7 +100,7 @@ class UrhoSceneModel:
             # here we need to undo the previous rotation done by DecomposeMesh)
             if sOptions.orientation:
                 om = sOptions.orientation.to_matrix().to_4x4()
-                objMatrix = om * objMatrix * om.inverted()
+                objMatrix = om @ objMatrix @ om.inverted()
 
             # Get pos/rot/scale
             pos = objMatrix.to_translation()
@@ -309,21 +309,10 @@ def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
         values={"name": techniquFile[1]} )
 
     # Textures
-    if uMaterial.diffuseTexName:
-        XmlAddElement(material, "texture",
-            values={"unit": "diffuse", "name": uScene.FindFile(PathType.TEXTURES, uMaterial.diffuseTexName)} )
-
-    if uMaterial.normalTexName:
-        XmlAddElement(material, "texture",
-            values={"unit": "normal", "name": uScene.FindFile(PathType.TEXTURES, uMaterial.normalTexName)} )
-
-    if uMaterial.specularTexName:
-        XmlAddElement(material, "texture",
-            values={"unit": "specular", "name": uScene.FindFile(PathType.TEXTURES, uMaterial.specularTexName)} )
-
-    if uMaterial.emissiveTexName:
-        XmlAddElement(material, "texture",
-            values={"unit": "emissive", "name": uScene.FindFile(PathType.TEXTURES, uMaterial.emissiveTexName)} )
+    for texKey, texName in uMaterial.texturesNames.items():
+        if texName:
+            XmlAddElement(material, "texture",
+                values={"unit": texKey, "name": uScene.FindFile(PathType.TEXTURES, texName)} )
 
     # PS defines
     if uMaterial.psdefines != "":

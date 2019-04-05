@@ -447,14 +447,6 @@ class UrhoMaterial:
         self.specularColor = None
         # Material emissive color (0.0, 0.0, 0.0) (r,g,b)
         self.emissiveColor = None
-        # Diffuse color texture filename (no path)
-        self.diffuseTexName = None
-        # Normal texture filename (no path)
-        self.normalTexName = None
-        # Specular texture filename (no path)
-        self.specularTexName = None
-        # Emissive texture filename (no path)
-        self.emissiveTexName = None
         # Material is two sided
         self.twoSided = False
         # Material is shadeless
@@ -463,38 +455,12 @@ class UrhoMaterial:
         self.psdefines = ""
         # Shader VS defines
         self.vsdefines = ""
+        # Textures names (no path, unique names)
+        # keys: diffuse, specular, normal, emissive(\ao\lightmap)
+        self.texturesNames = {}
 
     def getTextures(self):
-        return  (
-                    self.diffuseTexName,
-                    self.normalTexName,
-                    self.specularTexName,
-                    self.emissiveTexName
-                )
-
-    def getTexturesNumber(self):
-        return 4
-
-    def getTextureName(self, index):
-        if index == 0:
-            return self.diffuseTexName
-        elif index == 1:
-            return self.normalTexName
-        elif index == 2:
-            return self.specularTexName
-        elif index == 3:
-            return self.emissiveTexName
-        return None
-
-    def setTextureName(self, index, name):
-        if index == 0:
-            self.diffuseTexName = name
-        elif index == 1:
-            self.normalTexName = name
-        elif index == 2:
-            self.specularTexName = name
-        elif index == 3:
-            self.emissiveTexName = name
+        return list(self.texturesNames.values())
 
 # --- Export options classes ---
 
@@ -1115,7 +1081,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                         uBone.collisionMask |= BONE_BOUNDING_SPHERE
                         uBone.radius = distance
                     # Calculate the vertex position in bone space
-                    boneVertexPos = uBone.inverseMatrix * vertexPos
+                    boneVertexPos = uBone.inverseMatrix @ vertexPos
                     # Update the bone boundingBox
                     uBone.collisionMask |= BONE_BOUNDING_BOX
                     uBone.boundingBox.merge(boneVertexPos)
@@ -1263,27 +1229,27 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             alpha = tMaterial.opacity
 
         isEmissive = False
-        emissiveTexture = None
+        emissiveKey = None
         
         technique = "NoTexture"
-        if tMaterial.diffuseTexName:
+        if "diffuse" in tMaterial.texturesNames:
             technique = "Diff"
-            if tMaterial.normalTexName:
+            if "normal" in tMaterial.texturesNames:
                 technique += "Normal"
-            if tMaterial.specularTexName:
+            if "specular" in tMaterial.texturesNames:
                 technique += "Spec"
             # Emission map, light map and AO (Ambient light map) use the same
             # emission texture slot, we have to pick one
-            if tMaterial.emitTexName:
+            if "emissive" in tMaterial.texturesNames:
+                emissiveKey = "emissive"
                 technique += "Emissive"
-                emissiveTexture = tMaterial.emitTexName
                 isEmissive = True
-            elif tMaterial.ambientLightTexName:
+            elif "ao" in tMaterial.texturesNames:
+                emissiveKey = "ao"
                 technique += "AO"
-                emissiveTexture = tMaterial.ambientLightTexName
-            elif tMaterial.lightmapTexName:
+            elif "lightmap" in tMaterial.texturesNames:
+                emissiveKey = "lightmap"
                 technique += "LightMap"
-                emissiveTexture = tMaterial.lightmapTexName
         if tMaterial.shadeless:
             technique += "Unlit";
         if tMaterial.opacity:
@@ -1309,10 +1275,14 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         uMaterial.twoSided = tMaterial.twoSided
         uMaterial.shadeless = tMaterial.shadeless
 
-        uMaterial.diffuseTexName = tMaterial.diffuseTexName
-        uMaterial.normalTexName = tMaterial.normalTexName
-        uMaterial.specularTexName = tMaterial.specularTexName
-        uMaterial.emissiveTexName = emissiveTexture
+        uMaterial.texturesNames = tMaterial.texturesNames.copy()
+
+        # Remove emissive/ao/lightmap and add one of them as emissive
+        uMaterial.texturesNames.pop("emissive", None)
+        uMaterial.texturesNames.pop("ao", None)
+        uMaterial.texturesNames.pop("lightmap", None)
+        if emissiveKey:
+            uMaterial.texturesNames["emissive"] = tMaterial.texturesNames[emissiveKey]
 
         uMaterials.append(uMaterial)
        

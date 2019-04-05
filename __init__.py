@@ -202,11 +202,11 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
         layout.prop(self, "objectsPath")
         layout.prop(self, "scenesPath")
         row = layout.row()
-        row.label("Max number of bones:")
+        row.label(text = "Max number of bones:")
         row.prop(self, "bonesPerGeometry")
         row.prop(self, "bonesPerVertex")
         row = layout.row()
-        row.label("Report window:")
+        row.label(text = "Report window:")
         row.prop(self, "reportWidth")
         row.prop(self, "maxMessagesCount")
 
@@ -223,7 +223,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.updatingProperties = True
 
         # Save preferred output path
-        addonPrefs = context.user_preferences.addons[__name__].preferences
+        addonPrefs = context.preferences.addons[__name__].preferences
         if self.outputPath:
             addonPrefs.outputPath = self.outputPath
         # Skeleton implies weights    
@@ -257,7 +257,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Select errors and merge are incompatible
         if self.selectErrors:
             self.merge = False
-            
+
         self.updatingProperties = False
 
     def update_func2(self, context):
@@ -344,7 +344,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     # Revert all the export settings back to their default values
     def reset(self, context): 
         
-        addonPrefs = context.user_preferences.addons[__name__].preferences
+        addonPrefs = context.preferences.addons[__name__].preferences
 
         self.updatingProperties = False
 
@@ -419,7 +419,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     # Revert the output paths back to their default values
     def reset_paths(self, context, forced):
 
-        addonPrefs = context.user_preferences.addons[__name__].preferences
+        addonPrefs = context.preferences.addons[__name__].preferences
 
         if forced or (not self.outputPath and addonPrefs.outputPath):
             self.outputPath = addonPrefs.outputPath
@@ -911,7 +911,7 @@ class UrhoReportDialog(bpy.types.Operator):
     def invoke(self, context, event):
         global logMaxCount
         wm = context.window_manager
-        addonPrefs = context.user_preferences.addons[__name__].preferences
+        addonPrefs = context.preferences.addons[__name__].preferences
         logMaxCount = addonPrefs.maxMessagesCount
         return wm.invoke_props_dialog(self, width = addonPrefs.reportWidth)
         #return wm.invoke_popup(self, width = addonPrefs.reportWidth)
@@ -967,7 +967,7 @@ class UrhoExportCommandOperator(bpy.types.Operator):
 # The export panel, here we draw the panel using properties we have created earlier
 class UrhoExportRenderPanel(bpy.types.Panel):
     
-    bl_idname = "urho.exportrenderpanel"
+    bl_idname = "URHOEXPORT_PT_RenderPanel"
     bl_label = "Urho export"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -995,12 +995,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             return
 
         row = layout.row()
-        row.label("Output:")
+        row.label(text = "Output:")
         row.operator("urho.exportresetpaths", text="", icon='LIBRARY_DATA_DIRECT')
 
         box = layout.box()
 
-        box.label("Output folder:")
+        box.label(text = "Output folder:")
         box.prop(settings, "outputPath")
         box.prop(settings, "fileOverwrite")
         row = box.row()
@@ -1023,17 +1023,17 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             dbox.prop(settings, "scenesPath")
 
         row = layout.row()
-        row.label("Settings:")
+        row.label(text = "Settings:")
         row.operator("urho.exportreset", text="", icon='LIBRARY_DATA_DIRECT')
         
         box = layout.box()
 
         row = box.row()
-        row.label("Objects:")
+        row.label(text = "Objects:")
         row.prop(settings, "source", expand=True)
 
         row = box.row()
-        row.label("Origin:")
+        row.label(text = "Origin:")
         row.prop(settings, "origin", expand=True)
 
         box.prop(settings, "orientation")
@@ -1067,7 +1067,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 
         row = box.row()
         row.prop(settings, "skeletons")
-        row.label("", icon='BONE_DATA')
+        row.label(text = "", icon='BONE_DATA')
         if settings.skeletons:
             row = box.row()
             row.separator()
@@ -1087,7 +1087,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         column = row.column()
         column.enabled = not settings.skeletons
         column.prop(settings, "objAnimations")
-        row.label("", icon='ANIM_DATA')
+        row.label(text = "", icon='ANIM_DATA')
         if (settings.skeletons and settings.animations) or settings.objAnimations:
             row = box.row()
             row.separator()
@@ -1112,7 +1112,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         
         row = box.row()
         row.prop(settings, "geometries")
-        row.label("", icon='MESH_DATA')
+        row.label(text = "", icon='MESH_DATA')
         if settings.geometries:
             row = box.row()
             row.separator()
@@ -1141,7 +1141,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row = box.row()
         row.enabled = settings.geometries
         row.prop(settings, "morphs")
-        row.label("", icon='SHAPEKEY_DATA')
+        row.label(text = "", icon='SHAPEKEY_DATA')
         if settings.geometries and settings.morphs:
             row = box.row()
             row.separator()
@@ -1154,7 +1154,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 
         row = box.row()
         row.prop(settings, "materials")
-        row.label("", icon='MATERIAL_DATA')
+        row.label(text = "", icon='MATERIAL_DATA')
         if settings.materials:
             row = box.row()
             row.separator()
@@ -1162,17 +1162,17 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 
         row = box.row()
         row.prop(settings, "textures")
-        row.label("", icon='TEXTURE_DATA')
+        row.label(text = "", icon='TEXTURE_DATA')
 
         row = box.row()
         row.prop(settings, "prefabs")
-        row.label("", icon='MOD_OCEAN')
+        row.label(text = "", icon='MOD_OCEAN')
 
         if settings.prefabs:
             row = box.row()
             row.separator()
             row.prop(settings, "objectsPrefab")
-            row.label("", icon='MOD_BUILD')
+            row.label(text = "", icon='MOD_BUILD')
 
             if settings.objectsPrefab:
                 row = box.row()
@@ -1183,7 +1183,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row = box.row()
             row.separator()
             row.prop(settings, "collectivePrefab")
-            row.label("", icon='WORLD')
+            row.label(text = "", icon='WORLD')
 
             if settings.collectivePrefab:
                 row = box.row()
@@ -1194,10 +1194,10 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row = box.row()
             row.separator()
             row.prop(settings, "fullScene")
-            row.label("", icon='URL')
+            row.label(text = "", icon='URL')
 
             row = box.row()
-            row.label("   Elements to add:")
+            row.label(text = "   Elements to add:")
 
             row = box.row()
             row.separator()
@@ -1208,14 +1208,14 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.separator()
             row.separator()
             row.prop(settings, "physics")
-            row.label("", icon='PHYSICS')
+            row.label(text = "", icon='PHYSICS')
 
             if settings.physics:
                 row = box.row()
                 row.separator()
                 row.separator()
                 row.prop(settings, "collisionShape")
-                row.label("", icon='GROUP')
+                row.label(text = "", icon='GROUP')
 
 #--------------------
 # Handlers
@@ -1224,7 +1224,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 # Called after loading a new blend. Set the default path if the path edit box is empty.        
 @persistent
 def PostLoad(dummy):
-    addonPrefs = bpy.context.user_preferences.addons[__name__].preferences
+    addonPrefs = bpy.context.preferences.addons[__name__].preferences
     settings = bpy.context.scene.urho_exportsettings
     settings.errorsMem.Clear()
     settings.updatingProperties = False
@@ -1252,11 +1252,11 @@ def register():
     if DEBUG: print("Urho export register")
     
     for cls in classes:
-        register_class(cls)    
+        bpy.utils.register_class(cls)    
 
-    bpy.types.Scene.urho_exportsettings: bpy.props.PointerProperty(type=UrhoExportSettings)
-    
-    #bpy.context.user_preferences.filepaths.use_relative_paths = False
+    bpy.types.Scene.urho_exportsettings = bpy.props.PointerProperty(type=UrhoExportSettings)
+
+    #bpy.context.preferences.filepaths.use_relative_paths = False
     
     if not PostLoad in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(PostLoad)
@@ -1273,7 +1273,7 @@ def unregister():
     if DEBUG: print("Urho export unregister")
  
     for cls in reversed(classes):
-        unregister_class(cls)
+        bpy.utils.unregister_class(cls)
     
     del bpy.types.Scene.urho_exportsettings
     
@@ -1380,7 +1380,7 @@ def ExecuteUrhoExport(context):
     sOptions = SOptions()
     
     # Addons preferences
-    addonPrefs = context.user_preferences.addons[__name__].preferences
+    addonPrefs = context.preferences.addons[__name__].preferences
     
     # Copy from exporter UI settings to Decompose options
     tOptions.mergeObjects = settings.merge
@@ -1543,7 +1543,7 @@ def ExecuteUrhoExport(context):
                 if textureName is None:
                     continue
                 # Check if the Blender image data exists
-                image = bpy.data.images[textureName]
+                image = bpy.data.images.get(textureName, None)
                 if image is None:
                     continue
                 # Get the texture file full path
