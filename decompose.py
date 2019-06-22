@@ -346,7 +346,6 @@ class TOptions:
         self.bonesGlobalOrigin = False  #useless
         self.actionsGlobalOrigin = False
         self.applyModifiers = False
-        self.applySettings = 'PREVIEW'
         self.doBones = True
         self.doOnlyKeyedBones = False
         self.doOnlyDeformBones = False

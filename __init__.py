@@ -236,9 +236,6 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Use Fcurves only for actions
         if not ('ACTION' in self.animationSource):
             self.actionsByFcurves = False
-        # Morphs require 'Apply modifiers' (not sure)
-        if self.morphs:
-            self.modifiers = True
         # Morphs need geometries    
         if not self.geometries:
             self.morphs = False
@@ -358,7 +355,6 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.source = 'ONLY_SELECTED'
         self.scale = 1.0
         self.modifiers = False
-        self.modifiersRes = 'PREVIEW'
         self.origin = 'LOCAL'
         self.selectErrors = True
         self.forceElements = False
@@ -544,15 +540,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     modifiers: BoolProperty(
             name = "Apply modifiers",
             description = "Apply the object modifiers before exporting",
-            default = False,
-            update = update_func)
-
-    modifiersRes: EnumProperty(
-            name = "Modifiers setting",
-            description = "Resolution setting to use while applying modifiers",
-            items = (('PREVIEW', "Preview", "use the Preview resolution setting"),
-                     ('RENDER', "Render", "use the Render resolution setting")),
-            default = 'RENDER')
+            default = False)
 
     origin: EnumProperty(
             name = "Mesh origin",
@@ -776,9 +764,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     morphs: BoolProperty(
             name = "Morphs (shape keys)",
-            description = "Export vertex morphs (Geometries and Apply modifiers needed)",
-            default = False,
-            update = update_func)
+            description = "Export vertex morphs (Geometries needed)",
+            default = False)
 
     morphNor: BoolProperty(
             name = "Normal",
@@ -1040,10 +1027,6 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         box.prop(settings, "scale")
         
         box.prop(settings, "modifiers")
-        if settings.modifiers:
-            row = box.row()
-            row.separator()
-            row.prop(settings, "modifiersRes", expand=True)
 
         row = box.row()
         row.prop(settings, "selectErrors")
@@ -1391,7 +1374,6 @@ def ExecuteUrhoExport(context):
     tOptions.scale = settings.scale
     tOptions.globalOrigin = (settings.origin == 'GLOBAL')
     tOptions.applyModifiers = settings.modifiers
-    tOptions.applySettings = settings.modifiersRes
     tOptions.doBones = settings.skeletons
     tOptions.doOnlyKeyedBones = settings.onlyKeyedBones
     tOptions.doOnlyDeformBones = settings.onlyDeformBones
