@@ -1816,9 +1816,34 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         if j == 0:
             continue
         block.value = 0
-    # Create a Mesh datablock with modifiers applied
-    # (note: do not apply if not needed, it loses precision)
-    mesh = meshObj.to_mesh(bpy.context.depsgraph, tOptions.applyModifiers)
+
+    # TODO: for not evaluated objects (= without modifiers) it is much faster to avoid the copy,
+    # but 'to_mesh_clear' must be called from the same object which created the mesh; also do not
+    # call 'to_mesh' two times on the same object, the previuos mesh is deleted.
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    mesh = None
+    if tOptions.applyModifiers or tOptions.doMorphs:
+        # Create an evaluated object to use modifiers
+        # (note: do not apply if not needed, it loses precision)
+        meshObjEval = meshObj.evaluated_get(depsgraph)
+        # Create a temporary mesh datablock (owned by the object, removed with to_mesh_clear)
+        meshTemp = meshObjEval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+        # Make a copy (owned by the main database, removed with data.meshes.remove)
+        mesh = meshTemp.copy()
+        # Delete the temporary datablock
+        meshObjEval.to_mesh_clear()
+    else:
+        # Create a temporary mesh datablock (owned by the object, removed with to_mesh_clear)
+        meshTemp = meshObj.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+        # Make a copy (owned by the main database, removed with data.meshes.remove)
+        mesh = meshTemp.copy()
+        # Delete the temporary datablock
+        meshObj.to_mesh_clear()
+
+    if not mesh:
+        log.warning("Object {:s} does not have geometry".format(meshObj.name))
+        return
 
     log.info("Decomposing mesh: {:s} ({:d} vertices)".format(meshObj.name, len(mesh.vertices)) )
     
@@ -1979,7 +2004,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         for i, vertexIndex in enumerate(tri.vertices):
             # i: vertex index in the face (0->1->2)
             # vertexIndex: vertex index in Blender buffer (0..maxVertices-1)
-            # loopIndex: sequence
+            # loopIndex: vertex index in the loop sequence
 
             loopIndex = tri.loops[i]
 
@@ -2111,7 +2136,6 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                 verticesList.append(tVertex)
                 verticesMapList.append(tVertexIndex)
 
-
             # Add the vertex index to the temp list to create triangles later
             tempList.append(tVertexIndex)
                         
@@ -2169,9 +2193,9 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             OptimizeIndices(lodLevel)
     
     # Check if we need and can work on shape keys (morphs)
-    shapeKeys = meshObj.data.shape_keys
     keyBlocks = []
     if tOptions.doMorphs:
+        shapeKeys = mesh.shape_keys
         if not shapeKeys or len(shapeKeys.key_blocks) < 1:
             log.warning("Object {:s} has no shape keys".format(meshObj.name))
         else:
@@ -2190,30 +2214,19 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         
         log.info("Decomposing shape: {:s} ({:d} vertices)".format(block.name, len(block.data)) )
 
-        #Set the shape key to 100%
-        block.value = 1
-        #Make a tempory copy of the mesh at this shape.
-        shapeMesh = meshObj.to_mesh(bpy.context.depsgraph, tOptions.applyModifiers)
-        #Reset the shape key to 0%
-        block.value = 0
+        # Check if vertex counts match
+        if len(mesh.vertices) != len(block.data):
+            log.error("Vertex count mismatch on shape {:s}.".format(block.name))
+            continue
+        
+        # Probably to use the old code where we set the shape key to 100% on the object, we need
+        # to use: evaluated_depsgraph_get + evaluated_get + to_mesh (exactly like done with mesh)
 
-        #Check if vertex counts match. If there is a mismatch, it's likely due to vertices fused together in the shape key.
-        if len(shapeMesh.vertices) != len(mesh.vertices):
-            #Try a fallback of converting shape key data directly to vertex data. If there is a vertex count mismatch, it's due to a modifier changing the vertex count (e.g. mirror).
-            if len(shapeMesh.vertices) != len(block.data):
-                # Delete the temporary copy
-                bpy.data.meshes.remove(shapeMesh)
-                #TODO: Handling this requires a method for mapping original vertex points to their final points, which handles cases where the vertex count changes.
-                log.error("Vertex count mismatch on shape {:s}.".format(block.name))
-                continue
-            else:
-                # Delete the temporary copy
-                bpy.data.meshes.remove(shapeMesh)
-                # Make a new temporary copy of the base mesh
-                shapeMesh = mesh.copy()
-                # Apply the shape
-                for i, data in enumerate(block.data):
-                    shapeMesh.vertices[i].co = data.co
+        # Make a copy of the base mesh
+        shapeMesh = mesh.copy()
+        # Apply the shape
+        for i, data in enumerate(block.data):
+            shapeMesh.vertices[i].co = data.co
 
         # Recalculate normals
         shapeMesh.update(calc_edges = True, calc_edges_loose = True, calc_loop_triangles = True)
@@ -2230,7 +2243,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             morphed = False
 
             # In this list we store vertex index and morphed vertex of each triangle, we'll add them
-            # to the morph only if at least one vertex on the triangle is affected by the moprh
+            # to the morph only if at least one vertex on the triangle is affected by the morph
             tempList = []
             
             # For each Blender vertex index in the triangle
@@ -2241,7 +2254,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                 
                 position = posMatrix @ vertex.co
                 
-                if mesh.use_auto_smooth:
+                if shapeMesh.use_auto_smooth:
                     # if using Data->Normals->Auto Smooth, use split normal vector
                     normal = Vector(tri.split_normals[i])
                 elif tri.use_smooth:
