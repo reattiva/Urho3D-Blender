@@ -1804,18 +1804,13 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
     
     verticesMap = {}
     
-    #Save existing shape key values, and set them to zero
-    shapeKeys = meshObj.data.shape_keys
-    if shapeKeys and len(shapeKeys.key_blocks) > 0:
-        keyBlocks = shapeKeys.key_blocks
-    else:
-        keyBlocks = []
+    # Save existing shape key values, and set them to zero
     shapeKeysOldValues = []
-    for j, block in enumerate(keyBlocks):
-        shapeKeysOldValues.append(block.value)
-        if j == 0:
-            continue
-        block.value = 0
+    objShapeKeys = meshObj.data.shape_keys
+    if tOptions.doMorphs and objShapeKeys:
+        for block in objShapeKeys.key_blocks:
+            shapeKeysOldValues.append(block.value)
+            block.value = 0
 
     # TODO: for not evaluated objects (= without modifiers) it is much faster to avoid the copy,
     # but 'to_mesh_clear' must be called from the same object which created the mesh; also do not
@@ -2202,6 +2197,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             keyBlocks = shapeKeys.key_blocks
 
     # Decompose shape keys (morphs)
+    morphHasNewNormals = False
     for j, block in enumerate(keyBlocks):
         # Skip 'Basis' shape key
         if j == 0:
@@ -2315,6 +2311,8 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                         if tMorphVertex != oldTMorphVertex:
                             log.error('Different vertex {:d} of triangle {:d} of shape {:s}.'
                                 .format(vertexIndex, tri.index, block.name) )
+                            if tMorphVertex.normal != oldTMorphVertex.normal:
+                                morphHasNewNormals = True
                             continue
                     except KeyError:
                         # Add a new morph vertex
@@ -2345,13 +2343,18 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         # Delete the temporary copy 
         bpy.data.meshes.remove(shapeMesh)
 
-    #Restore shape keys
-    for j, block in enumerate(keyBlocks):
-        if j == 0:
-            continue
-        block.value = shapeKeysOldValues[j]
+    # We can have "Different vertex" errors when some vertices are merged in the base morph because 
+    # positions and normals are the same, but in other morphs, the normals can diverge and this require 
+    # separated vertices. We could do a prepass on the shapes to find and avoid merging these vertices.
+    if morphHasNewNormals:
+        log.info("To solve the shapes errors try setting the faces to smooth")
 
-    bpy.data.meshes.remove(mesh)    
+    # Restore shape keys
+    for j, oldValue in enumerate(shapeKeysOldValues):
+        objShapeKeys.key_blocks[j].value = oldValue
+
+    # Delete the mesh
+    bpy.data.meshes.remove(mesh)
 
     return
 
