@@ -1811,30 +1811,13 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             shapeKeysOldValues.append(block.value)
             block.value = 0
 
-    # TODO: for not evaluated objects (= without modifiers) it is much faster to avoid the copy,
-    # but 'to_mesh_clear' must be called from the same object which created the mesh; also do not
-    # call 'to_mesh' two times on the same object, the previuos mesh is deleted.
-
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    mesh = None
     if tOptions.applyModifiers or tOptions.doMorphs:
         # Create an evaluated object to use modifiers
         # (note: do not apply if not needed, it loses precision)
-        meshObjEval = meshObj.evaluated_get(depsgraph)
-        # Create a temporary mesh datablock (owned by the object, removed with to_mesh_clear)
-        meshTemp = meshObjEval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
-        # Make a copy (owned by the main database, removed with data.meshes.remove)
-        mesh = meshTemp.copy()
-        # Delete the temporary datablock
-        meshObjEval.to_mesh_clear()
-    else:
-        # Create a temporary mesh datablock (owned by the object, removed with to_mesh_clear)
-        meshTemp = meshObj.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
-        # Make a copy (owned by the main database, removed with data.meshes.remove)
-        mesh = meshTemp.copy()
-        # Delete the temporary datablock
-        meshObj.to_mesh_clear()
-
+        meshObj = meshObj.evaluated_get(depsgraph)
+    # Create a mesh datablock (owned by the object, removed with to_mesh_clear)
+    mesh = meshObj.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
     if not mesh:
         log.warning("Object {:s} does not have geometry".format(meshObj.name))
         return
@@ -2217,23 +2200,20 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         # Probably to use the old code where we set the shape key to 100% on the object, we need
         # to use: evaluated_depsgraph_get + evaluated_get + to_mesh (exactly like done with mesh)
 
-        # Make a copy of the base mesh
-        shapeMesh = mesh.copy()
         # Apply the shape
         for i, data in enumerate(block.data):
-            shapeMesh.vertices[i].co = data.co
+            mesh.vertices[i].co = data.co
 
         # Recalculate normals
-        shapeMesh.update(calc_edges = True, calc_edges_loose = True, calc_loop_triangles = True)
+        mesh.update(calc_edges = True, calc_edges_loose = True, calc_loop_triangles = True)
 
         # Compute local space unit length split normals vectors
-        shapeMesh.calc_normals_split()
-        shapeMesh.calc_loop_triangles()
+        mesh.calc_normals_split()
+        mesh.calc_loop_triangles()
         
         # TODO: if set use 'vertex group' of the shape to filter affected vertices
-        # TODO: can we use mesh loop_triangles and not shapeMesh loop_triangles ?
         
-        for tri in shapeMesh.loop_triangles:
+        for tri in mesh.loop_triangles:
             # TODO: add only affected triangles not faces, use morphed as a mask
             morphed = False
 
@@ -2245,11 +2225,11 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             for i, vertexIndex in enumerate(tri.vertices):
 
                 # Get the Blender morphed vertex
-                vertex = shapeMesh.vertices[vertexIndex]
+                vertex = mesh.vertices[vertexIndex]
                 
                 position = posMatrix @ vertex.co
                 
-                if shapeMesh.use_auto_smooth:
+                if mesh.use_auto_smooth:
                     # if using Data->Normals->Auto Smooth, use split normal vector
                     normal = Vector(tri.split_normals[i])
                 elif tri.use_smooth:
@@ -2339,9 +2319,6 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         else:
             log.warning('Empty shape {:s}.'.format(block.name))
 
-        # Delete the temporary copy 
-        bpy.data.meshes.remove(shapeMesh)
-
     # We can have "Different vertex" errors when some vertices are merged in the base morph because 
     # positions and normals are the same, but in other morphs, the normals can diverge and this require 
     # separated vertices. We could do a prepass on the shapes to find and avoid merging these vertices.
@@ -2353,7 +2330,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         objShapeKeys.key_blocks[j].value = oldValue
 
     # Delete the mesh
-    bpy.data.meshes.remove(mesh)
+    meshObj.to_mesh_clear()
 
     return
 
