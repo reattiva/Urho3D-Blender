@@ -132,7 +132,7 @@ log.addHandler(consoleHandler)
 # Addon preferences, they are visible in the Users Preferences Addons page,
 # under the Urho exporter addon row
 class UrhoAddonPreferences(bpy.types.AddonPreferences):
-    bl_idname = __name__
+    bl_idname = __package__
 
     outputPath: StringProperty(
             name = "Default export path",
@@ -223,7 +223,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.updatingProperties = True
 
         # Save preferred output path
-        addonPrefs = context.preferences.addons[__name__].preferences
+        addonPrefs = context.preferences.addons[__package__].preferences
         if self.outputPath:
             addonPrefs.outputPath = self.outputPath
         # Skeleton implies weights    
@@ -341,7 +341,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     # Revert all the export settings back to their default values
     def reset(self, context): 
         
-        addonPrefs = context.preferences.addons[__name__].preferences
+        addonPrefs = context.preferences.addons[__package__].preferences
 
         self.updatingProperties = False
 
@@ -415,7 +415,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
     # Revert the output paths back to their default values
     def reset_paths(self, context, forced):
 
-        addonPrefs = context.preferences.addons[__name__].preferences
+        addonPrefs = context.preferences.addons[__package__].preferences
 
         if forced or (not self.outputPath and addonPrefs.outputPath):
             self.outputPath = addonPrefs.outputPath
@@ -898,7 +898,7 @@ class UrhoReportDialog(bpy.types.Operator):
     def invoke(self, context, event):
         global logMaxCount
         wm = context.window_manager
-        addonPrefs = context.preferences.addons[__name__].preferences
+        addonPrefs = context.preferences.addons[__package__].preferences
         logMaxCount = addonPrefs.maxMessagesCount
         return wm.invoke_props_dialog(self, width = addonPrefs.reportWidth)
         #return wm.invoke_popup(self, width = addonPrefs.reportWidth)
@@ -1207,12 +1207,17 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 # Called after loading a new blend. Set the default path if the path edit box is empty.        
 @persistent
 def PostLoad(dummy):
-    addonPrefs = bpy.context.preferences.addons[__name__].preferences
+    addonPrefs = bpy.context.preferences.addons[__package__].preferences
     settings = bpy.context.scene.urho_exportsettings
     settings.errorsMem.Clear()
     settings.updatingProperties = False
     settings.reset_paths(bpy.context, False)
 
+    # Load materials from data.blend
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    file_path = os.path.join(dir_path, "data.blend")
+    with bpy.data.libraries.load(filepath=file_path, link=True, relative=False) as (data_from, data_to):
+        data_to.materials = data_from.materials
 
 #--------------------
 # Register Unregister
@@ -1339,8 +1344,8 @@ def ExecuteUrhoExport(context):
     global logList
 
     # Check Blender version
-    if bpy.app.version < (2, 70, 0):
-        log.error( "Blender version 2.70 or later is required" )
+    if bpy.app.version < (2, 80, 0):
+        log.error( "Blender version 2.80 or later is required" )
         return False
 
     # Clear log list
@@ -1363,7 +1368,7 @@ def ExecuteUrhoExport(context):
     sOptions = SOptions()
     
     # Addons preferences
-    addonPrefs = context.preferences.addons[__name__].preferences
+    addonPrefs = context.preferences.addons[__package__].preferences
     
     # Copy from exporter UI settings to Decompose options
     tOptions.mergeObjects = settings.merge
