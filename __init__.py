@@ -40,6 +40,7 @@ if "decompose" in locals():
     imp.reload(export_urho)
     imp.reload(export_scene)
     imp.reload(utils)
+    imp.reload(materials)
     if DEBUG and "testing" in locals(): imp.reload(testing)
 
 from .decompose import TOptions, Scan
@@ -47,6 +48,7 @@ from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, Urho
                          UrhoWriteTriggers, UrhoExport
 from .export_scene import SOptions, UrhoScene, UrhoExportScene, UrhoWriteMaterial, UrhoWriteMaterialsList
 from .utils import PathType, FOptions, GetFilepath, CheckFilepath, ErrorsMem
+from .materials import write_material
 if DEBUG: from .testing import PrintUrhoData, PrintAll
 
 import os
@@ -1571,7 +1573,8 @@ def ExecuteUrhoExport(context):
                 uScene.AddFile(PathType.MATERIALS, uMaterial.name, filepath[1])
                 if CheckFilepath(filepath[0], fOptions):
                     log.info( "Creating material {:s}".format(filepath[1]) )
-                    UrhoWriteMaterial(uScene, uMaterial, filepath[0], fOptions)
+                    #UrhoWriteMaterial(uScene, uMaterial, filepath[0], fOptions)
+                    write_material(uMaterial.name, filepath[0])
                     
             if settings.materialsList:
                 for uModel in uExportData.models:

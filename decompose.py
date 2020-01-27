@@ -1711,6 +1711,9 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 # https://developer.blender.org/diffusion/BA/browse/master/io_scene_obj/export_obj.py
 # https://docs.blender.org/api/blender2.8/bpy_extras.io_utils.html?highlight=path_reference#bpy_extras.io_utils.path_reference
 def DecomposeMaterial(mesh, material, tMaterial):
+    return
+
+    """
     bsdf = node_shader_utils.PrincipledBSDFWrapper(material)
     if not bsdf:
         return
@@ -1721,7 +1724,7 @@ def DecomposeMaterial(mesh, material, tMaterial):
     tMaterial.specularColor = Color((bsdf.specular, bsdf.specular, bsdf.specular))
     tMaterial.specularIntensity = ((1.0 - bsdf.roughness) * 30.0)**2.0
 
-    tMaterial.twoSided = mesh.show_double_sided
+    #tMaterial.twoSided = mesh.show_double_sided
 
     texturesMap = {
         "diffuse": "base_color_texture",
@@ -1742,6 +1745,7 @@ def DecomposeMaterial(mesh, material, tMaterial):
         if image is None:
             continue
         tMaterial.texturesNames[texKey] = image.name
+    """
 
     '''
     tMaterial.diffuseColor = material.diffuse_color
