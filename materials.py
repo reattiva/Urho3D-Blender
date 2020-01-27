@@ -94,7 +94,6 @@ def write_litsolid_material(group: bpy.types.ShaderNodeGroup, result_file_path:s
         diff_map_name = bpy.context.scene.urho_exportsettings.texturesPath + "/" + group.inputs['DiffMap.rgb (float3) (unit="diffuse")'].links[0].from_node.image.name
 
     vertexcolor: bool = group.inputs['VERTEXCOLOR (bool)'].default_value
-    specular: bool = group.inputs['SPECULAR (bool)'].default_value # Вообще этот дефайн определяется в движке, а не в материале и его в нодах не должно быть
     spec_rgb: bpy.types.Color = group.inputs['MatSpecColor.rgb (float3)'].default_value
     spec_a: float = group.inputs['MatSpecColor.a (float) (specularPower)'].default_value
     specmap: bool = group.inputs['SPECMAP (bool)'].default_value
@@ -156,7 +155,7 @@ def write_litsolid_material(group: bpy.types.ShaderNodeGroup, result_file_path:s
     if diffmap:
         result += f'    <texture unit="diffuse" name="{diff_map_name}" />\n'
 
-    if specular and (spec_rgb[0] != 0.0 or spec_rgb[1] != 0.0 or spec_rgb[2] != 0.0 or spec_a != 1.0):
+    if spec_rgb[0] != 0.0 or spec_rgb[1] != 0.0 or spec_rgb[2] != 0.0 or spec_a != 1.0:
         result += f'    <parameter name="MatSpecColor" value="{spec_rgb[0]} {spec_rgb[1]} {spec_rgb[2]} {spec_a}" />\n'
 
     if specmap:
