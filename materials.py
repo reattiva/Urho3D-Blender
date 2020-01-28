@@ -35,7 +35,7 @@ def write_unlit_material(group: bpy.types.ShaderNodeGroup, result_file_path:str)
     diff_a: float = group.inputs['MatDiffColor.a (float)'].default_value
     diffmap: bool = group.inputs['DIFFMAP (bool)'].default_value
 
-    diff_map_name:str = "Unknown"
+    diff_map_name: str = "Unknown"
     if group.inputs['DiffMap.rgb (float3) (unit="diffuse")'].is_linked:
         diff_map_name = bpy.context.scene.urho_exportsettings.texturesPath + "/" + group.inputs['DiffMap.rgb (float3) (unit="diffuse")'].links[0].from_node.image.name
 
@@ -89,7 +89,7 @@ def write_litsolid_material(group: bpy.types.ShaderNodeGroup, result_file_path:s
     diff_a: float = group.inputs['MatDiffColor.a (float)'].default_value
     diffmap: bool = group.inputs['DIFFMAP (bool)'].default_value
 
-    diff_map_name:str = "Unknown"
+    diff_map_name: str = "Unknown"
     if group.inputs['DiffMap.rgb (float3) (unit="diffuse")'].is_linked:
         diff_map_name = bpy.context.scene.urho_exportsettings.texturesPath + "/" + group.inputs['DiffMap.rgb (float3) (unit="diffuse")'].links[0].from_node.image.name
 
@@ -98,20 +98,20 @@ def write_litsolid_material(group: bpy.types.ShaderNodeGroup, result_file_path:s
     spec_a: float = group.inputs['MatSpecColor.a (float) (specularPower)'].default_value
     specmap: bool = group.inputs['SPECMAP (bool)'].default_value
 
-    spec_map_name:str = "Unknown"
+    spec_map_name: str = "Unknown"
     if group.inputs['SpecMap.rgb (float3) (unit="specular")'].is_linked:
         spec_map_name = bpy.context.scene.urho_exportsettings.texturesPath + "/" + group.inputs['SpecMap.rgb (float3) (unit="specular")'].links[0].from_node.image.name
 
     emis_rgb: bpy.types.Color = group.inputs['MatEmissiveColor.rgb (float3)'].default_value
     emissivemap: bool = group.inputs['EMISSIVEMAP (bool)'].default_value
 
-    emis_map_name:str = "Unknown"
+    emis_map_name: str = "Unknown"
     if group.inputs['EmissiveMap.rgb (float3) (unit="emissive")'].is_linked:
         emis_map_name = bpy.context.scene.urho_exportsettings.texturesPath + "/" + group.inputs['EmissiveMap.rgb (float3) (unit="emissive")'].links[0].from_node.image.name
 
     normalmap: bool = group.inputs['NORMALMAP (bool)'].default_value
 
-    normal_map_name:str = "Unknown"
+    normal_map_name: str = "Unknown"
     if group.inputs['NormalMap.rgb (float3) (unit="normal")'].is_linked:
         normal_map_name = bpy.context.scene.urho_exportsettings.texturesPath + "/" + group.inputs['NormalMap.rgb (float3) (unit="normal")'].links[0].from_node.image.name
 
