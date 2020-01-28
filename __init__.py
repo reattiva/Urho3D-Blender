@@ -27,7 +27,7 @@ bl_info = {
     "description": "Urho3D export",
     "author": "reattiva",
     "version": (0, 6),
-    "blender": (2, 80, 0),
+    "blender": (2, 83, 0),
     "location": "Properties > Render > Urho export",
     "warning": "",
     "wiki_url": "",
@@ -46,7 +46,7 @@ if "decompose" in locals():
 from .decompose import TOptions, Scan
 from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
                          UrhoWriteTriggers, UrhoExport
-from .export_scene import SOptions, UrhoScene, UrhoExportScene, UrhoWriteMaterial, UrhoWriteMaterialsList
+from .export_scene import SOptions, UrhoScene, UrhoExportScene, UrhoWriteMaterialsList
 from .utils import PathType, FOptions, GetFilepath, CheckFilepath, ErrorsMem
 from .materials import write_material
 if DEBUG: from .testing import PrintUrhoData, PrintAll
@@ -1346,8 +1346,8 @@ def ExecuteUrhoExport(context):
     global logList
 
     # Check Blender version
-    if bpy.app.version < (2, 80, 0):
-        log.error( "Blender version 2.80 or later is required" )
+    if bpy.app.version < (2, 83, 0):
+        log.error( "Blender version 2.83 or later is required" )
         return False
 
     # Clear log list
