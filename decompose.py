@@ -1711,6 +1711,17 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 # https://developer.blender.org/diffusion/BA/browse/master/io_scene_obj/export_obj.py
 # https://docs.blender.org/api/blender2.8/bpy_extras.io_utils.html?highlight=path_reference#bpy_extras.io_utils.path_reference
 def DecomposeMaterial(mesh, material, tMaterial):
+    # Find all textures used by material
+    texture_nodes = []
+    texture_nodes.extend([x for x in material.node_tree.nodes if x.type=='TEX_IMAGE'])
+
+    # Так как texturesNames словарь, а не список, то генерируем уникальыне ключи (TODO: переделать это безобразие на список)
+    length = len(texture_nodes) 
+    i = 0
+    while i < length:
+        tMaterial.texturesNames[i] = texture_nodes[i].image.name
+        i += 1
+
     return
 
     """

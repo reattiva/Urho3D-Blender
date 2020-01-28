@@ -1223,7 +1223,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         uMaterial = UrhoMaterial()
         # For material list to work the name must be the same 
         uMaterial.name = tMaterial.name
+        uMaterial.texturesNames = tMaterial.texturesNames.copy()
         
+        """
         alpha = 1.0
         if tMaterial.opacity:
             alpha = tMaterial.opacity
@@ -1284,6 +1286,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
         if emissiveKey:
             uMaterial.texturesNames["emissive"] = tMaterial.texturesNames[emissiveKey]
 
+        """
         uMaterials.append(uMaterial)
        
 

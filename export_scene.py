@@ -299,6 +299,7 @@ def XmlIdSet(node, ids = None):
 # Export materials
 #------------------------
 
+"""
 def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
 
     material = XmlAddElement(None, "material")
@@ -344,6 +345,8 @@ def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
             values={"value": "none"} )
 
     WriteXmlFile(material, filepath, fOptions)
+"""
+
 
 def UrhoWriteMaterialsList(uScene, uModel, filepath):
 

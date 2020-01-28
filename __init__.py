@@ -1536,7 +1536,7 @@ def ExecuteUrhoExport(context):
                 if image is None:
                     continue
                 # Get the texture file full path
-                srcFilename = bpy.path.abspath(image.filepath)
+                srcFilename = bpy.path.abspath(image.filepath, library=image.library)
                 # Get image filename
                 filename = os.path.basename(image.filepath)
                 if not filename:
