@@ -98,7 +98,8 @@ class TVertex:
         return (self.pos == other.pos and 
                 self.normal == other.normal and 
                 self.uv == other.uv and
-				self.color == other.color)
+		self.uv2 == other.uv2 and
+		self.color == other.color)
 
     def isEqual(self, other):
         # TODO: compare floats with a epsilon margin?
