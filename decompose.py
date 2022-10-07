@@ -1721,7 +1721,7 @@ def DecomposeMaterial(mesh, material, tMaterial):
     tMaterial.specularColor = Color((bsdf.specular, bsdf.specular, bsdf.specular))
     tMaterial.specularIntensity = ((1.0 - bsdf.roughness) * 30.0)**2.0
 
-    tMaterial.twoSided = mesh.show_double_sided
+    # tMaterial.twoSided = mesh.show_double_sided
 
     texturesMap = {
         "diffuse": "base_color_texture",
