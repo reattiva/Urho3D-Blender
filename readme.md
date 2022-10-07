@@ -1,3 +1,7 @@
+Improvements
+============
+#### A bug caused to block material export on Blender 2.8 and above has been fixed.
+
 Urho3D-Blender
 ==============
 
