@@ -47,6 +47,7 @@ class SOptions:
         self.doFullScene = False
         self.onlySelected = False
         self.physics = False
+        self.castshadows = False
         self.collisionShape = None
         self.trasfObjects = False
         self.globalOrigin = False
@@ -96,7 +97,7 @@ class UrhoSceneModel:
 
             # Get the local matrix (relative to parent)
             objMatrix = object.matrix_local
-            # Reorient (normally only root objects need to be re-oriented but 
+            # Reorient (normally only root objects need to be re-oriented but
             # here we need to undo the previous rotation done by DecomposeMesh)
             if sOptions.orientation:
                 om = sOptions.orientation.to_matrix().to_4x4()
@@ -180,7 +181,7 @@ class Node:
         for child in self.children:
             names.extend(child.to_list())
         return names
-            
+
 class Tree:
     def __init__(self):
         self.nodes = {}
@@ -241,7 +242,7 @@ def XmlAddElement(parent, tag, ids=None, values=None):
             element.set(name, str(value))
     return element
 
-# Adds to parent an XML element with name "component" and attributes 
+# Adds to parent an XML element with name "component" and attributes
 # "type" and "id", the value of "id" is taken from the 'ids' dictionary.
 def XmlAddComponent(parent=None, type=None, ids=None):
     if parent is not None:
@@ -255,7 +256,7 @@ def XmlAddComponent(parent=None, type=None, ids=None):
         ids["component"] += 1
     return element
 
-# Adds to parent an XML element with name "attribute" and attributes 
+# Adds to parent an XML element with name "attribute" and attributes
 # "name" and "value".
 def XmlAddAttribute(parent=None, name=None, value=None):
     if parent is not None:
@@ -268,7 +269,7 @@ def XmlAddAttribute(parent=None, name=None, value=None):
         element.set("value", str(value))
     return element
 
-# Removes from 'node' all the child nodes whose attribute 'name' is not 
+# Removes from 'node' all the child nodes whose attribute 'name' is not
 # in the list 'values'.
 def XmlNodeFilter(node, name, values):
     for child in list(node):
@@ -456,6 +457,8 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         comp = XmlAddComponent(node, type=uSceneModel.type, ids=ids)
         XmlAddAttribute(comp, name="Model", value="Model;" + modelFile)
         XmlAddAttribute(comp, name="Material", value="Material" + materials)
+        if sOptions.castshadows:
+          XmlAddAttribute(comp, name="Cast Shadows", value="true")
 
         if sOptions.physics:
             # Use model's bounding box to compute CollisionShape's size and offset
@@ -492,7 +495,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         selectedNames.append(obj.name)
 
     # Export full scene: scene elements + scene node
-    if sOptions.doFullScene: 
+    if sOptions.doFullScene:
         filepath = GetFilepath(PathType.SCENES, uScene.blenderSceneName, fOptions)
         if CheckFilepath(filepath[0], fOptions):
             log.info( "Creating full scene {:s}".format(filepath[1]) )
@@ -500,7 +503,7 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
 
     # Export a collective node
     if sOptions.doCollectivePrefab:
-        rootNodeCopy = copy.deepcopy(rootNode)      
+        rootNodeCopy = copy.deepcopy(rootNode)
         if sOptions.onlySelected:
             # Get the IDs of the node of the selected objects
             selectedIds = []
@@ -522,10 +525,10 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
         noObject = True
         for blenderName, xmlNode in xmlNodes.items():
             # Filter selected objects
-            if sOptions.onlySelected and not blenderName in selectedNames: 
+            if sOptions.onlySelected and not blenderName in selectedNames:
                 continue
             noObject = False
-            # From Blender name to plain name, this is useful for LODs but we can have 
+            # From Blender name to plain name, this is useful for LODs but we can have
             # duplicates, in that case fallback to the Blender name
             name = None
             for uSceneModel in uScene.modelsList:
