@@ -76,7 +76,7 @@ log.setLevel(logging.DEBUG)
 FORMAT = '%(levelname)s:%(message)s'
 formatter = logging.Formatter(FORMAT)
 
-# Console filter: no more than 3 identical messages 
+# Console filter: no more than 3 identical messages
 consoleFilterMsg = None
 consoleFilterCount = 0
 class ConsoleFilter(logging.Filter):
@@ -117,7 +117,7 @@ for handler in reversed(log.handlers):
 listHandler = ExportLoggerHandler()
 listHandler.setFormatter(formatter)
 log.addHandler(listHandler)
-    
+
 # Create a logger handler for the console
 consoleHandler = logging.StreamHandler()
 consoleHandler.addFilter(consoleFilter)
@@ -137,7 +137,7 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
     outputPath: StringProperty(
             name = "Default export path",
             description = "Default path where to export",
-            default = "", 
+            default = "",
             maxlen = 1024,
             subtype = "DIR_PATH")
 
@@ -190,7 +190,7 @@ class UrhoAddonPreferences(bpy.types.AddonPreferences):
             name = "Max number of messages",
             description = "Max number of messages in the report window",
             default = 500)
-            
+
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "outputPath")
@@ -226,7 +226,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         addonPrefs = context.preferences.addons[__name__].preferences
         if self.outputPath:
             addonPrefs.outputPath = self.outputPath
-        # Skeleton implies weights    
+        # Skeleton implies weights
         if self.skeletons:
             self.geometryWei = True
             self.objAnimations = False
@@ -236,7 +236,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         # Use Fcurves only for actions
         if not ('ACTION' in self.animationSource):
             self.actionsByFcurves = False
-        # Morphs need geometries    
+        # Morphs need geometries
         if not self.geometries:
             self.morphs = False
         # Tangent needs position, normal and UV
@@ -330,7 +330,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.errorsEnum = 'NONE'
         self.updatingProperties = False
         selectErrors(context, self.errorsMem, errorName)
-        
+
     def errors_items_func(self, context):
         items = [('NONE', "", ""),
                  ('ALL',  "all", "")]
@@ -339,8 +339,8 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         return items
 
     # Revert all the export settings back to their default values
-    def reset(self, context): 
-        
+    def reset(self, context):
+
         addonPrefs = context.preferences.addons[__name__].preferences
 
         self.updatingProperties = False
@@ -410,6 +410,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.selectedObjects = False
         self.trasfObjects = False
         self.physics = False
+        self.castshadows = False
         self.collisionShape = 'TRIANGLEMESH'
 
     # Revert the output paths back to their default values
@@ -467,14 +468,14 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             update = update_subfolders)
 
     # --- Output settings ---
-    
+
     outputPath: StringProperty(
             name = "",
             description = "Path where to export",
-            default = "", 
+            default = "",
             maxlen = 1024,
             subtype = "DIR_PATH",
-            update = update_func)   
+            update = update_func)
 
     useSubDirs: BoolProperty(
             name = "Use sub folders",
@@ -509,7 +510,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = False)
 
     # --- Source settings ---
-            
+
     source: EnumProperty(
             name = "Source",
             description = "Objects to be exported",
@@ -529,10 +530,10 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             default = 'X_PLUS')
 
     scale: FloatProperty(
-            name = "Scale", 
-            description = "Scale to apply on the exported objects", 
+            name = "Scale",
+            description = "Scale to apply on the exported objects",
             default = 1.0,
-            min = 0.0, 
+            min = 0.0,
             max = 1000.0,
             step = 10,
             precision = 1)
@@ -593,7 +594,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             name = "Strict LODs",
             description = "Add a new vertex if the LOD0 does not contain a vertex with the exact same position, normal and UV",
             default = True)
-            
+
     optimizeIndices: BoolProperty(
             name = "Optimize indices (slow)",
             description = "Linear-Speed vertex cache optimisation",
@@ -617,7 +618,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Don't export bones without Deform and its children",
             default = False,
             update = update_func2)
-            
+
     onlyVisibleBones: BoolProperty(
             name = "Only visible bones",
             description = "Don't export bones not visible and its children",
@@ -794,7 +795,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             name = "Copy textures",
             description = "Copy diffuse textures",
             default = False,
-            update = update_func)            
+            update = update_func)
 
     prefabs: BoolProperty(
             name = "Export Urho Prefabs",
@@ -821,6 +822,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Create a Urho3D scene",
             default = False,
             update = update_func)
+
+    castshadows: BoolProperty(
+        name = "Cast shadows",
+        description = "Cast shadows for all scene",
+        default = False)
 
     selectedObjects: BoolProperty(
             name = "Only selected objects",
@@ -851,7 +857,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
 
     bonesGlobalOrigin: BoolProperty(name = "Bones global origin", default = False)
     actionsGlobalOrigin: BoolProperty(name = "Actions global origin", default = False)
-    
+
 
 # Reset settings button
 class UrhoExportResetOperator(bpy.types.Operator):
@@ -888,13 +894,13 @@ class UrhoExportResetPathsOperator(bpy.types.Operator):
 # View log button
 class UrhoReportDialog(bpy.types.Operator):
     """ View export log """
-    
+
     bl_idname = "urho.report"
     bl_label = "Urho export report"
- 
+
     def execute(self, context):
         return {'FINISHED'}
- 
+
     def invoke(self, context, event):
         global logMaxCount
         wm = context.window_manager
@@ -902,11 +908,11 @@ class UrhoReportDialog(bpy.types.Operator):
         logMaxCount = addonPrefs.maxMessagesCount
         return wm.invoke_props_dialog(self, width = addonPrefs.reportWidth)
         #return wm.invoke_popup(self, width = addonPrefs.reportWidth)
-     
+
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        
+
         for line in logList:
             lines = line.split(":", 1)
             if lines[0] == 'CRITICAL':
@@ -925,42 +931,42 @@ class UrhoReportDialog(bpy.types.Operator):
 # Export button
 class UrhoExportOperator(bpy.types.Operator):
     """ Start exporting """
-    
+
     bl_idname = "urho.export"
     bl_label = "Export"
-  
+
     def execute(self, context):
         ExecuteAddon(context)
         return {'FINISHED'}
- 
+
     def invoke(self, context, event):
         return self.execute(context)
 
 # Export without report window
 class UrhoExportCommandOperator(bpy.types.Operator):
     """ Start exporting """
-    
+
     bl_idname = "urho.exportcommand"
     bl_label = "Export command"
-  
+
     def execute(self, context):
         ExecuteAddon(context, silent=True)
         return {'FINISHED'}
- 
+
     def invoke(self, context, event):
         return self.execute(context)
 
 
 # The export panel, here we draw the panel using properties we have created earlier
 class UrhoExportRenderPanel(bpy.types.Panel):
-    
+
     bl_idname = "URHOEXPORT_PT_RenderPanel"
     bl_label = "Urho export"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "render"
     #bl_options = {'DEFAULT_CLOSED'}
-    
+
     # Draw the export panel
     def draw(self, context):
         layout = self.layout
@@ -1012,7 +1018,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row = layout.row()
         row.label(text = "Settings:")
         row.operator("urho.exportreset", text="", icon='LIBRARY_DATA_DIRECT')
-        
+
         box = layout.box()
 
         row = box.row()
@@ -1025,13 +1031,13 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 
         box.prop(settings, "orientation")
         box.prop(settings, "scale")
-        
+
         box.prop(settings, "modifiers")
 
         row = box.row()
         row.prop(settings, "selectErrors")
         row.prop(settings, "errorsEnum")
-        
+
         box.prop(settings, "forceElements")
         box.prop(settings, "merge")
         if settings.merge:
@@ -1092,7 +1098,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.prop(settings, "animationRot")
             row.prop(settings, "animationSca")
             column.prop(settings, "filterSingleKeyFrames")
-        
+
         row = box.row()
         row.prop(settings, "geometries")
         row.label(text = "", icon='MESH_DATA')
@@ -1101,7 +1107,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.separator()
             row.prop(settings, "geometryPos")
             row.prop(settings, "geometryNor")
-            
+
             row = box.row()
             row.separator()
             row.prop(settings, "geometryUV")
@@ -1115,12 +1121,12 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             col = row.column()
             col.enabled = settings.skeletons
             col.prop(settings, "geometryWei")
-            
+
             row = box.row()
             row.separator()
             row.prop(settings, "geometryCol")
             row.prop(settings, "geometryColAlpha")
-        
+
         row = box.row()
         row.enabled = settings.geometries
         row.prop(settings, "morphs")
@@ -1138,6 +1144,8 @@ class UrhoExportRenderPanel(bpy.types.Panel):
         row = box.row()
         row.prop(settings, "materials")
         row.label(text = "", icon='MATERIAL_DATA')
+
+
         if settings.materials:
             row = box.row()
             row.separator()
@@ -1180,6 +1188,11 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             row.label(text = "", icon='URL')
 
             row = box.row()
+            row.separator()
+            row.prop(settings, "castshadows")
+            row.label(text = "", icon='MATERIAL_DATA')
+
+            row = box.row()
             row.label(text = "   Elements to add:")
 
             row = box.row()
@@ -1204,7 +1217,7 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 # Handlers
 #--------------------
 
-# Called after loading a new blend. Set the default path if the path edit box is empty.        
+# Called after loading a new blend. Set the default path if the path edit box is empty.
 @persistent
 def PostLoad(dummy):
     addonPrefs = bpy.context.preferences.addons[__name__].preferences
@@ -1229,18 +1242,18 @@ classes = (
     UrhoReportDialog
 )
 
-# Called when the addon is enabled. Here we register out UI classes so they can be 
+# Called when the addon is enabled. Here we register out UI classes so they can be
 # used by Python scripts.
 def register():
     if DEBUG: print("Urho export register")
-    
+
     for cls in classes:
-        bpy.utils.register_class(cls)    
+        bpy.utils.register_class(cls)
 
     bpy.types.Scene.urho_exportsettings = bpy.props.PointerProperty(type=UrhoExportSettings)
 
     #bpy.context.preferences.filepaths.use_relative_paths = False
-    
+
     if not PostLoad in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(PostLoad)
 
@@ -1254,12 +1267,12 @@ def register():
 # Called when the addon is disabled. Here we remove our UI classes.
 def unregister():
     if DEBUG: print("Urho export unregister")
- 
+
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
-    
+
     del bpy.types.Scene.urho_exportsettings
-    
+
     if PostLoad in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(PostLoad)
 
@@ -1272,7 +1285,7 @@ def unregister():
 def selectVertices(context, objectName, indicesList, deselect):
 
     objects = context.scene.objects
-    
+
     try:
         obj = objects[objectName]
     except KeyError:
@@ -1306,7 +1319,7 @@ def selectVertices(context, objectName, indicesList, deselect):
     if bpy.ops.object.mode_set.poll():
         bpy.ops.object.mode_set(mode='EDIT', toggle=False)
     # Restore old selection mode
-    bpy.context.tool_settings.mesh_select_mode = sel_mode 
+    bpy.context.tool_settings.mesh_select_mode = sel_mode
 
 from collections import defaultdict
 
@@ -1334,7 +1347,7 @@ def selectErrors(context, errorsMem, errorName):
 #-------------------------------------------------------------------------
 # Export main
 #-------------------------------------------------------------------------
-    
+
 def ExecuteUrhoExport(context):
     global logList
 
@@ -1345,7 +1358,7 @@ def ExecuteUrhoExport(context):
 
     # Clear log list
     logList[:] = []
-    
+
     # Get exporter UI settings
     settings = context.scene.urho_exportsettings
 
@@ -1361,10 +1374,10 @@ def ExecuteUrhoExport(context):
     uScene = UrhoScene(context.scene)
     # Scene export options
     sOptions = SOptions()
-    
+
     # Addons preferences
     addonPrefs = context.preferences.addons[__name__].preferences
-    
+
     # Copy from exporter UI settings to Decompose options
     tOptions.mergeObjects = settings.merge
     tOptions.mergeNotMaterials = settings.mergeNotMaterials
@@ -1436,6 +1449,7 @@ def ExecuteUrhoExport(context):
     sOptions.globalOrigin = tOptions.globalOrigin
     sOptions.orientation = tOptions.orientation
     sOptions.physics = settings.physics
+    sOptions.castshadows = settings.castshadows
     for shapeItem in settings.shapeItems:
         if shapeItem[0] == settings.collisionShape:
             sOptions.collisionShape = shapeItem[1]
@@ -1475,13 +1489,13 @@ def ExecuteUrhoExport(context):
 
     # Export each decomposed object
     for tData in tDataList:
-    
+
         #PrintAll(tData)
-        
+
         log.info("---- Exporting {:s} ----".format(tData.objectName))
 
         uExportData = UrhoExportData()
-        
+
         uExportOptions = UrhoExportOptions()
         uExportOptions.splitSubMeshes = settings.geometrySplit
         uExportOptions.useStrictLods = settings.strictLods
@@ -1503,8 +1517,8 @@ def ExecuteUrhoExport(context):
             if uModel.geometries:
                 if CheckFilepath(filepath[0], fOptions):
                     log.info( "Creating model {:s}".format(filepath[1]) )
-                    UrhoWriteModel(uModel, filepath[0]) 
-            
+                    UrhoWriteModel(uModel, filepath[0])
+
         for uAnimation in uExportData.animations:
             filepath = GetFilepath(PathType.ANIMATIONS, uAnimation.name, fOptions)
             uScene.AddFile(PathType.ANIMATIONS, uAnimation.name, filepath[1])
@@ -1518,7 +1532,7 @@ def ExecuteUrhoExport(context):
                 if CheckFilepath(filepath[0], fOptions):
                     log.info( "Creating triggers {:s}".format(filepath[1]) )
                     UrhoWriteTriggers(uAnimation.triggers, filepath[0], fOptions)
-                
+
         for uMaterial in uExportData.materials:
             for textureName in uMaterial.getTextures():
                 # Check the texture name (it can be a filename)
@@ -1567,7 +1581,7 @@ def ExecuteUrhoExport(context):
                 if CheckFilepath(filepath[0], fOptions):
                     log.info( "Creating material {:s}".format(filepath[1]) )
                     UrhoWriteMaterial(uScene, uMaterial, filepath[0], fOptions)
-                    
+
             if settings.materialsList:
                 for uModel in uExportData.models:
                     filepath = GetFilepath(PathType.MATLIST, uModel.name, fOptions)
@@ -1581,7 +1595,7 @@ def ExecuteUrhoExport(context):
     settings.errorsMem.Cleanup()
     if settings.selectErrors:
         selectErrors(context, settings.errorsMem, 'ALL')
-    
+
     # Export scene and nodes
     if settings.prefabs:
         if not sOptions.doObjectsPrefab and not sOptions.doCollectivePrefab and not sOptions.doFullScene:
@@ -1596,14 +1610,14 @@ def ExecuteUrhoExport(context):
 def ExecuteAddon(context, silent=False):
 
     startTime = time.time()
-    print("----------------------Urho export start----------------------")    
+    print("----------------------Urho export start----------------------")
     ExecuteUrhoExport(context)
     log.setLevel(logging.DEBUG)
     log.info("Export ended in {:.4f} sec".format(time.time() - startTime) )
-    
+
     if not silent:
         bpy.ops.urho.report('INVOKE_DEFAULT')
 
-    
+
 if __name__ == "__main__":
     register()
