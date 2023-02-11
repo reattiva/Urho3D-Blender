@@ -1258,12 +1258,13 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             technique += "Alpha";
             if tMaterial.alphaMask:
                 uMaterial.psdefines += " ALPHAMASK"
+                
         if "metallic" in tMaterial.texturesNames or "roughness" in tMaterial.texturesNames: # YKH
-            technique = "PBRMetallicRough" # YKH
+            technique = "PBR/PBRMetallicRough" # YKH
             if "diffuse" in tMaterial.texturesNames: # YKH
                 technique += "Diff" # YKH
             if "normal" in tMaterial.texturesNames: #YKH
-                technique = "Normal" # YKH
+                technique += "Normal" # YKH
             technique += "Spec" # YKH
             if "ao" in tMaterial.texturesNames: # YKH
                 emissiveKey = "ao" # YKH
