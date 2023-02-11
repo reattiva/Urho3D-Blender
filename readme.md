@@ -1,8 +1,10 @@
 Improvements
 ============
-#### Roughness, metallic and alpha maps can be exported with "Copy textures" option now.
-#### A bug caused to block material export on Blender 2.8 and above has been fixed.
-#### Added functionality to cast shadows in exported scene, 'Cast shadows' checkbox can be found under 'Export Urho Prefabs' menu.
+#### PBR technique will be created automatically if roughness or metallic maps are used
+#### Alpha technique appends to material technique if alpha map are used
+#### Roughness, metallic and alpha maps can be exported with "Copy textures" option now
+#### A bug caused to block material export on Blender 2.8 and above has been fixed
+#### Added functionality to cast shadows in exported scene, 'Cast shadows' checkbox can be found under 'Export Urho Prefabs' menu
 
 Urho3D-Blender
 ==============
