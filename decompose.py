@@ -1727,6 +1727,9 @@ def DecomposeMaterial(mesh, material, tMaterial):
         "diffuse": "base_color_texture",
         "specular": "specular_texture",
         "normal": "normalmap_texture",
+	"roughness":"roughness_texture", # YKH
+        "metallic":"metallic_texture", # YKH
+        "alpha": "alpha_texture", # YKH
         "emissive": None,
         "ao": None,
         "lightmap": None,
