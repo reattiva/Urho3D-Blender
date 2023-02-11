@@ -1262,7 +1262,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
            technique = "PBRMetallicRough" # YKH
            if "diffuse" in tMaterial.texturesNames: # YKH
                 technique += "Diff" # YKH
-            if "normal" in tMaterial.texturesNames
+            if "normal" in tMaterial.texturesNames: # YKH
                 technique = "Normal" # YKH
             technique += "Spec" # YKH
             if "ao" in tMaterial.texturesNames: # YKH
