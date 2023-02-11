@@ -1238,6 +1238,8 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
                 technique += "Normal"
             if "specular" in tMaterial.texturesNames:
                 technique += "Spec"
+            if "alpha" in tMaterial.texturesNames: # YKH
+                technique += "Alpha" # YKH
             # Emission map, light map and AO (Ambient light map) use the same
             # emission texture slot, we have to pick one
             if "emissive" in tMaterial.texturesNames:
@@ -1256,7 +1258,19 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             technique += "Alpha";
             if tMaterial.alphaMask:
                 uMaterial.psdefines += " ALPHAMASK"
-
+        if "metallic" in tMaterial.texturesNames or "roughness" in tMaterial.texturesNames: # YKH
+           technique = "PBRMetallicRough" # YKH
+           if "diffuse" in tMaterial.texturesNames: # YKH
+                technique += "Diff" # YKH
+            if "normal" in tMaterial.texturesNames
+                technique = "Normal" # YKH
+            technique += "Spec" # YKH
+            if "ao" in tMaterial.texturesNames: # YKH
+                emissiveKey = "ao" # YKH
+                technique += "AO" # YKH
+            if "alpha" in tMaterial.texturesNames: # YKH
+                technique += "Alpha" # YKH
+                
         uMaterial.techniqueName = technique
 
         if tMaterial.diffuseColor:
