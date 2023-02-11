@@ -1,7 +1,8 @@
 Improvements
 ============
+#### Roughness, metallic and alpha map can be exported with "Copy textures" option now.
 #### A bug caused to block material export on Blender 2.8 and above has been fixed.
-#### Added functionality to cast shadows in exported scene, 'Cast shadows' checkbox can be found under 'Export Urho Prefabs' menu
+#### Added functionality to cast shadows in exported scene, 'Cast shadows' checkbox can be found under 'Export Urho Prefabs' menu.
 
 Urho3D-Blender
 ==============
