@@ -20,18 +20,18 @@
 # http://www.blender.org/documentation/blender_python_api_2_66_4/info_tutorial_addon.html
 
 DEBUG = 0
-if DEBUG: print("Urho export init")
+if DEBUG: print("Blender2Urho init")
 
 bl_info = {
-    "name": "Urho3D export",
-    "description": "Urho3D export",
-    "author": "reattiva",
-    "version": (0, 6),
+    "name": "Blender2Urho",
+    "description": "Urho3D exporter with PBR material support and bunch of new features",
+    "author": "hanoglu (forked from: reattiva)",
+    "version": (0, 7),
     "blender": (2, 80, 0),
-    "location": "Properties > Render > Urho export",
+    "location": "Properties > Render > Blender2Urho",
     "warning": "",
-    "wiki_url": "",
-    "tracker_url": "",
+    "wiki_url": "https://github.com/hanoglu/Blender2Urho",
+    "tracker_url": "https://github.com/hanoglu/Blender2Urho",
     "category": "Import-Export"}
 
 if "decompose" in locals():
@@ -54,12 +54,13 @@ import time
 import sys
 import shutil
 import logging
-
 import bpy
+
 from bpy.props import StringProperty, BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.app.handlers import persistent
 from mathutils import Quaternion
 from math import radians
+from PIL import Image
 
 #--------------------
 # Loggers
@@ -402,6 +403,7 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
         self.materials = False
         self.materialsList = False
         self.textures = False
+        self.compressspecular = False
 
         self.prefabs = True
         self.objectsPrefab = False
@@ -796,6 +798,11 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
             description = "Copy diffuse textures",
             default = False,
             update = update_func)
+    compressspecular: BoolProperty(
+            name = "Compress specular map",
+            description = "Create RBFX/Urho3D PBR specular map image by compressing metallic and roughness in r and g channels of 'specular' map",
+            default = False,
+            update = update_func)
 
     prefabs: BoolProperty(
             name = "Export Urho Prefabs",
@@ -961,7 +968,7 @@ class UrhoExportCommandOperator(bpy.types.Operator):
 class UrhoExportRenderPanel(bpy.types.Panel):
 
     bl_idname = "URHOEXPORT_PT_RenderPanel"
-    bl_label = "Urho export"
+    bl_label = "Blender2Urho"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "render"
@@ -1153,6 +1160,10 @@ class UrhoExportRenderPanel(bpy.types.Panel):
 
         row = box.row()
         row.prop(settings, "textures")
+        row.label(text = "", icon='TEXTURE_DATA')
+
+        row = box.row()
+        row.prop(settings, "compressspecular")
         row.label(text = "", icon='TEXTURE_DATA')
 
         row = box.row()
@@ -1428,6 +1439,7 @@ def ExecuteUrhoExport(context):
     tOptions.doMaterials = settings.materials or settings.textures
     tOptions.bonesGlobalOrigin = settings.bonesGlobalOrigin
     tOptions.actionsGlobalOrigin = settings.actionsGlobalOrigin
+    tOptions.compressspecular = settings.compressspecular
 
     tOptions.orientation = None # ='Y_PLUS'
     if settings.orientation == 'X_PLUS':
@@ -1532,7 +1544,7 @@ def ExecuteUrhoExport(context):
                 if CheckFilepath(filepath[0], fOptions):
                     log.info( "Creating triggers {:s}".format(filepath[1]) )
                     UrhoWriteTriggers(uAnimation.triggers, filepath[0], fOptions)
-
+        allFilePaths = set()
         for uMaterial in uExportData.materials:
             for textureName in uMaterial.getTextures():
                 # Check the texture name (it can be a filename)
@@ -1551,6 +1563,7 @@ def ExecuteUrhoExport(context):
                 # Get the destination file full path (preserve the extension)
                 fOptions.preserveExtTemp = True
                 filepath = GetFilepath(PathType.TEXTURES, filename, fOptions)
+                allFilePaths.add(filepath)
                 # Check if already exported
                 if not uScene.AddFile(PathType.TEXTURES, textureName, filepath[1]):
                     continue
@@ -1573,6 +1586,44 @@ def ExecuteUrhoExport(context):
                             shutil.copyfile(src = srcFilename, dst = filepath[0])
                         except:
                             log.error( "Cannot copy texture to {:s}".format(filepath[0]) )
+        if settings.compressspecular:
+            for folder in allFilePaths:
+                images = [file for file in os.listdir(os.path.abspath(os.path.join(folder[0], os.pardir))) if file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg")]
+                for img in images:
+                    if "metallic" in img or "roughness" in img:
+                        mtl = "metallic"
+                        rou = "roughness"
+                        if not "metallic" in img:
+                            mtl = "roughness"
+                            rou = "metallic"
+                        both = False
+                        rou_map = ""
+                        if os.path.exists(os.path.join(os.path.abspath(os.path.join(folder[0], os.pardir)),img.replace(mtl,rou))):
+                            both = True
+                            rou_map = Image.open(os.path.join(os.path.abspath(os.path.join(folder[0], os.pardir)),img.replace(mtl,rou))).convert("L")
+                        mtl_map = Image.open(os.path.join(os.path.abspath(os.path.join(folder[0], os.pardir)),img)).convert("L")
+                        # Create a new RGB image with the same size as the grayscale images
+                        rgb_image = Image.new("RGB", mtl_map.size)
+
+                        # Get the pixel access object for the RGB image
+                        pixels = rgb_image.load()
+
+                        # Iterate over each pixel in the image
+                        for x in range(rgb_image.width):
+                            for y in range(rgb_image.height):
+                                # Get the pixel value for each grayscale image
+                                pixel1 = mtl_map.getpixel((x, y))
+                                pixel2 = 0
+                                if both:
+                                    pixel2 = rou_map.getpixel((x, y))
+
+                                # Set the pixel value for the RGB image
+                                if mtl == "metallic":
+                                    pixels[x, y] = (pixel2, pixel1, 0)
+                                else:
+                                    pixels[x, y] = (pixel1, pixel2, 0)
+                        # Save the merged image
+                        rgb_image.save(os.path.join(os.path.abspath(os.path.join(folder[0], os.pardir)),img.replace(mtl,"mixedchannel")))
 
         if settings.materials:
             for uMaterial in uExportData.materials:

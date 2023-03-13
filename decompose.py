@@ -385,6 +385,7 @@ class TOptions:
         self.doMorphUV = True
         self.doOptimizeIndices = True
         self.doMaterials = True
+        self.compressspecular = False
         
 
 #--------------------
@@ -1710,7 +1711,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 
 # https://developer.blender.org/diffusion/BA/browse/master/io_scene_obj/export_obj.py
 # https://docs.blender.org/api/blender2.8/bpy_extras.io_utils.html?highlight=path_reference#bpy_extras.io_utils.path_reference
-def DecomposeMaterial(mesh, material, tMaterial):
+def DecomposeMaterial(mesh, material, tMaterial, tOptions):
     bsdf = node_shader_utils.PrincipledBSDFWrapper(material)
     if not bsdf:
         return
@@ -1729,7 +1730,7 @@ def DecomposeMaterial(mesh, material, tMaterial):
         "normal": "normalmap_texture",
         "roughness":"roughness_texture", # YKH
         "metallic":"metallic_texture", # YKH
-        "alpha": "alpha_texture", # YKH
+        #"alpha": "alpha_texture", # YKH
         "emissive": None,
         "ao": None,
         "lightmap": None,
@@ -1744,7 +1745,16 @@ def DecomposeMaterial(mesh, material, tMaterial):
         image = bsdfTex.image
         if image is None:
             continue
-        tMaterial.texturesNames[texKey] = image.name
+        if not tOptions.compressspecular:
+            tMaterial.texturesNames[texKey] = image.name
+        elif texKey == "metallic" or texKey == "roughness":
+            mtl = "metallic"
+            if not texKey == "metallic":
+                mtl = "roughness"
+            tMaterial.texturesNames["specular"] = image.name.replace(mtl, "mixedchannel")
+            tMaterial.texturesNames[texKey] = image.name
+        else:
+            tMaterial.texturesNames[texKey] = image.name
 
     '''
     tMaterial.diffuseColor = material.diffuse_color
@@ -1938,7 +1948,7 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         if tOptions.doMaterials and materialName and (not materialName in materialsList):
             tMaterial = TMaterial(materialName)
             materialsList.append(tMaterial)
-            DecomposeMaterial(mesh, material, tMaterial)
+            DecomposeMaterial(mesh, material, tMaterial, tOptions)
 
         # If we are merging and want to have separate materials, add the object name
         mapMaterialName = materialName

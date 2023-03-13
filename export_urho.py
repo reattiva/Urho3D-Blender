@@ -893,9 +893,9 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             
             # Errors helpers
             warningNewVertices = False
-            
+
             # Try to guess the most complete element mask
-            randomIndices = random.sample(tLodLevel.indexSet, min(30, len(tLodLevel.indexSet)) )
+            randomIndices = random.sample(sorted(tLodLevel.indexSet), min(30, len(tLodLevel.indexSet)) )
             guessedElementMask = GetMaxElementMask(randomIndices, tData.verticesList)
             if vertexBuffer.elementMask is None and guessedElementMask:
                 vertexBuffer.elementMask = guessedElementMask
@@ -1259,7 +1259,7 @@ def UrhoExport(tData, uExportOptions, uExportData, errorsMem):
             if tMaterial.alphaMask:
                 uMaterial.psdefines += " ALPHAMASK"
                 
-        if "metallic" in tMaterial.texturesNames or "roughness" in tMaterial.texturesNames: # YKH
+        if "specular" in tMaterial.texturesNames: #"metallic" in tMaterial.texturesNames or "roughness" in tMaterial.texturesNames: # YKH
             technique = "PBR/PBRMetallicRough" # YKH
             if "diffuse" in tMaterial.texturesNames: # YKH
                 technique += "Diff" # YKH

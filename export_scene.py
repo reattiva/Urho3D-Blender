@@ -310,10 +310,33 @@ def UrhoWriteMaterial(uScene, uMaterial, filepath, fOptions):
         values={"name": techniquFile[1]} )
 
     # Textures
+    mixedenabled = False
+    mixedname = "DEFAULT"
+    for texKey, texName in uMaterial.texturesNames.items():
+        if "mixedchannel" in texName:
+            mixedenabled = True
+        elif "metallic" in texName:
+            mixedname = uScene.FindFile(PathType.TEXTURES, texName).replace("metallic", "mixedchannel")
+        elif "roughness" in texName:
+            mixedname = uScene.FindFile(PathType.TEXTURES, texName).replace("roughness", "mixedchannel")
     for texKey, texName in uMaterial.texturesNames.items():
         if texName:
-            XmlAddElement(material, "texture",
-                values={"unit": texKey, "name": uScene.FindFile(PathType.TEXTURES, texName)} )
+            if mixedenabled and "metallic" in texName:
+                XmlAddElement(material, "parameter",
+                    values={"name": "Metallic", "value": "0"} )
+                continue
+            elif mixedenabled and "roughness" in texName:
+                XmlAddElement(material, "parameter",
+                    values={"name": "Roughness", "value": "0"} )
+                continue
+            elif "mixedchannel" in texName:
+                if mixedname == "DEFAULT":
+                    mixedname = texName
+                XmlAddElement(material, "texture",
+                    values={"unit": texKey, "name": mixedname} )
+            else:
+                XmlAddElement(material, "texture",
+                    values={"unit": texKey, "name": uScene.FindFile(PathType.TEXTURES, texName)} )
 
     # PS defines
     if uMaterial.psdefines != "":
