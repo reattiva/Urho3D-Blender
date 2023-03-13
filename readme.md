@@ -1,8 +1,12 @@
 Improvements
 ============
-#### PBR technique will be created automatically if roughness or metallic maps are used
+## PBR Support
+Urho3D/RBFX engines takes metallic and roughness maps from different channels of a single RGB image instead of two grey scale images. This plugin has the ability of combining two grey scale metallic and roughness maps into single RGB image. To enable this feature "Copy textures" and "Compress specular map" options should be selected. Material file will be created automatically with respect to corresponding technique.
+## Others
 #### Alpha technique appends to material technique if alpha map are used
 #### Roughness, metallic and alpha maps can be exported with "Copy textures" option now
+## Bugfixes
+#### A bug related with Python 3.11 fixed 
 #### A bug caused to block material export on Blender 2.8 and above has been fixed
 #### Added functionality to cast shadows in exported scene, 'Cast shadows' checkbox can be found under 'Export Urho Prefabs' menu
 
