@@ -5,10 +5,10 @@ Urho3D/RBFX engines takes metallic and roughness maps from different channels of
 ## Others
 #### Alpha technique appends to material technique if alpha map are used
 #### Roughness, metallic and alpha maps can be exported with "Copy textures" option now
+#### Added functionality to cast shadows in exported scene, 'Cast shadows' checkbox can be found under 'Export Urho Prefabs' menu
 ## Bugfixes
 #### A bug related with Python 3.11 fixed 
 #### A bug caused to block material export on Blender 2.8 and above has been fixed
-#### Added functionality to cast shadows in exported scene, 'Cast shadows' checkbox can be found under 'Export Urho Prefabs' menu
 
 Urho3D-Blender
 ==============
