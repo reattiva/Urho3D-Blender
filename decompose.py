@@ -46,6 +46,7 @@ import operator
 import heapq
 import logging
 import re
+from bpy_extras import io_utils, node_shader_utils
 
 log = logging.getLogger("ExportLogger")
 
@@ -217,6 +218,7 @@ class TMaterial:
         self.alphaMask = False
         # Material is two sided
         self.twoSided = False
+        '''
         # Diffuse color texture filename (no path)
         self.diffuseTexName = None
         # Normal texture filename (no path)
@@ -229,8 +231,12 @@ class TMaterial:
         self.lightmapTexName = None
         # Ambient light map texture filename (light map modulated by ambient color)(no path)
         self.ambientLightTexName = None
+        '''
         # Material is shadeless
         self.shadeless = False
+        # Textures names (no path)
+        # keys: diffuse, specular, normal, emissive, ao, lightmap
+        self.texturesNames = {}
 
     def __eq__(self, other):
         if hasattr(other, 'name'):
@@ -238,9 +244,7 @@ class TMaterial:
         return (self.name == other)
 
     def __str__(self):  
-        return (" name: {:s}\n"
-                " image: \"{:s}\""
-                .format(self.name, self.diffuseTexName) )
+        return (" name: {:s}\n".format(self.name) )
 
 #--------------------
 # Animations classes
@@ -342,7 +346,6 @@ class TOptions:
         self.bonesGlobalOrigin = False  #useless
         self.actionsGlobalOrigin = False
         self.applyModifiers = False
-        self.applySettings = 'PREVIEW'
         self.doBones = True
         self.doOnlyKeyedBones = False
         self.doOnlyDeformBones = False
@@ -382,6 +385,7 @@ class TOptions:
         self.doMorphUV = True
         self.doOptimizeIndices = True
         self.doMaterials = True
+        self.compressspecular = False
         
 
 #--------------------
@@ -796,14 +800,14 @@ def SetRestPosePosition(context, armatureObj):
     # Force the armature in the rest position (warning: https://developer.blender.org/T24674)
     # This should reset bones matrices ok, but for sure it is not resetting the mesh tessfaces
     # positions
-    savedPosePositionAndVisibility = [armatureObj.data.pose_position, armatureObj.hide]
+    savedPosePositionAndVisibility = [armatureObj.data.pose_position, armatureObj.hide_viewport]
     armatureObj.data.pose_position = 'REST'
-    armatureObj.hide = False
+    armatureObj.hide_viewport = False
     
     # This should help to recalculate all the mesh vertices, it is needed by decomposeMesh
     # and maybe it helps decomposeArmature (but no problem was seen there)
     # TODO: find the correct way, for sure it is not this
-    objects = context.scene.objects
+    objects = context.view_layer.objects
     savedObjectActive = objects.active
     objects.active = armatureObj
     if bpy.ops.object.mode_set.poll():
@@ -818,7 +822,7 @@ def RestorePosePosition(armatureObj, savedValue):
     if not armatureObj:
         return
     armatureObj.data.pose_position = savedValue[0]
-    armatureObj.hide = savedValue[1]
+    armatureObj.hide_viewport = savedValue[1]
 
 # -- Rigify -- 
 # In a Rigify system there are ORG bones and DEF bones. The DEF bones causes the mesh deformation
@@ -1101,16 +1105,16 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
         # Here 'bone.matrix_local' is in object(armature) space, so we have to
         # calculate the bone transformation in parent bone space
         if parent:
-            boneMatrix = parent.matrix_local.inverted() * boneMatrix
+            boneMatrix = parent.matrix_local.inverted() @ boneMatrix
         else:
-            boneMatrix = originMatrix * boneMatrix
+            boneMatrix = originMatrix @ boneMatrix
             if tOptions.orientation:
-                boneMatrix = tOptions.orientation.to_matrix().to_4x4() * boneMatrix
+                boneMatrix = tOptions.orientation.to_matrix().to_4x4() @ boneMatrix
             # Normally we don't have to worry that Blender is Z up and we want
             # Y up because we use relative transformations between bones. However
             # the parent bone is relative to the armature so we need to convert
             # Z up to Y up by rotating its matrix by -90° on X
-            boneMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) * boneMatrix
+            boneMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) @ boneMatrix
 
         if tOptions.scale != 1.0:
             boneMatrix.translation *= tOptions.scale
@@ -1138,7 +1142,7 @@ def DecomposeArmature(scene, armatureObj, meshObj, tData, tOptions):
         # - negate column 2
         ml = bone.matrix_local.copy()
         if tOptions.orientation:
-            ml = tOptions.orientation.to_matrix().to_4x4() * ml
+            ml = tOptions.orientation.to_matrix().to_4x4() @ ml
         if tOptions.scale != 1.0:
             ml.translation *= tOptions.scale
         (ml[1][:], ml[2][:]) = (ml[2][:], ml[1][:])
@@ -1485,7 +1489,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     # Local rest matrix (relative to the parent)
                     restMatrix = poseBone.bone.matrix_local.copy()
                     if poseBone.parent:
-                        restMatrix = poseBone.parent.bone.matrix_local.inverted() * restMatrix
+                        restMatrix = poseBone.parent.bone.matrix_local.inverted() @ restMatrix
                 else:
                     # Object rest matrix
                     restMatrix = Matrix()
@@ -1544,7 +1548,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     # position relative to its parent. 
                     # We apply the rest position to obtain the rotation/scale/translation of the bone with
                     # respect to its parent.
-                    poseMatrix = restMatrix * deltaMatrix
+                    poseMatrix = restMatrix @ deltaMatrix
 
                 else:
                     # Set frame (TODO: this is very slow, try to advance only the armature)
@@ -1557,7 +1561,7 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 
                         if parent:
                             # Bone matrix relative to its parent bone
-                            poseMatrix = parent.matrix.inverted() * poseMatrix
+                            poseMatrix = parent.matrix.inverted() @ poseMatrix
                     else:
                         # Object animations: use the matrix relative to the parent (local matrix)
                         poseMatrix = poseBone.matrix_local.copy()
@@ -1567,14 +1571,14 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
                     if isArmature:
                         # Root bone matrix relative to the armature
                         if tOptions.orientation:
-                            poseMatrix = tOptions.orientation.to_matrix().to_4x4() * poseMatrix
-                        poseMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) * originMatrix * poseMatrix
+                            poseMatrix = tOptions.orientation.to_matrix().to_4x4() @ poseMatrix
+                        poseMatrix = Matrix.Rotation(math.radians(-90.0), 4, 'X' ) @ originMatrix @ poseMatrix
                     else:
                         # Object animations: reorient the animations
                         if tOptions.orientation:
                             # Remove the orientation from the object, apply the animation then orient again
                             om = tOptions.orientation.to_matrix().to_4x4()
-                            poseMatrix = om * poseMatrix * om.inverted()
+                            poseMatrix = om @ poseMatrix @ om.inverted()
 
                 if tOptions.scale != 1.0:
                     poseMatrix.translation *= tOptions.scale
@@ -1702,6 +1706,101 @@ def DecomposeActions(scene, armatureObj, tData, tOptions):
 
 
 #---------------------------------
+# Decompose material
+#---------------------------------
+
+# https://developer.blender.org/diffusion/BA/browse/master/io_scene_obj/export_obj.py
+# https://docs.blender.org/api/blender2.8/bpy_extras.io_utils.html?highlight=path_reference#bpy_extras.io_utils.path_reference
+def DecomposeMaterial(mesh, material, tMaterial, tOptions):
+    bsdf = node_shader_utils.PrincipledBSDFWrapper(material)
+    if not bsdf:
+        return
+    
+    tMaterial.diffuseColor = Color(bsdf.base_color[:3])
+    tMaterial.diffuseIntensity = 1.0
+
+    tMaterial.specularColor = Color((bsdf.specular, bsdf.specular, bsdf.specular))
+    tMaterial.specularIntensity = ((1.0 - bsdf.roughness) * 30.0)**2.0
+
+    # tMaterial.twoSided = mesh.show_double_sided
+
+    texturesMap = {
+        "diffuse": "base_color_texture",
+        "specular": "specular_texture",
+        "normal": "normalmap_texture",
+        "roughness":"roughness_texture", # YKH
+        "metallic":"metallic_texture", # YKH
+        #"alpha": "alpha_texture", # YKH
+        "emissive": None,
+        "ao": None,
+        "lightmap": None,
+    }
+
+    for texKey, bsdfKey in texturesMap.items():
+        if bsdfKey is None:
+            continue
+        bsdfTex = getattr(bsdf, bsdfKey, None)
+        if bsdfTex is None:
+            continue
+        image = bsdfTex.image
+        if image is None:
+            continue
+        if not tOptions.compressspecular:
+            tMaterial.texturesNames[texKey] = image.name
+        elif texKey == "metallic" or texKey == "roughness":
+            mtl = "metallic"
+            if not texKey == "metallic":
+                mtl = "roughness"
+            tMaterial.texturesNames["specular"] = image.name.replace(mtl, "mixedchannel")
+            tMaterial.texturesNames[texKey] = image.name
+        else:
+            tMaterial.texturesNames[texKey] = image.name
+
+    '''
+    tMaterial.diffuseColor = material.diffuse_color
+    tMaterial.diffuseIntensity = material.diffuse_intensity
+    tMaterial.specularColor = material.specular_color
+    tMaterial.specularIntensity = material.specular_intensity
+    tMaterial.specularHardness = material.specular_hardness
+    tMaterial.twoSided = mesh.show_double_sided
+    tMaterial.shadeless = material.use_shadeless
+    if material.use_transparency:
+        tMaterial.opacity = material.alpha
+        if material.transparency_method == 'MASK':
+            tMaterial.alphaMask = True
+
+    # In reverse order so the first slots have precedence
+    for texture in reversed(material.texture_slots):
+        if texture is None or texture.texture_coords != 'UV':
+            continue
+        textureData = bpy.data.textures[texture.name]
+        if textureData.type != 'IMAGE':
+            continue
+        if textureData.image is None:
+            continue
+        # Skip disabled textures
+        textureIndex = material.texture_slots.find(texture.name)
+        if textureIndex >= 0 and not material.use_textures[textureIndex]:
+            continue
+        imageName = textureData.image.name
+        if texture.use_map_color_diffuse:
+            tMaterial.diffuseTexName = imageName
+        if texture.use_map_normal:
+            tMaterial.normalTexName = imageName
+        if texture.use_map_color_spec:
+            tMaterial.specularTexName = imageName
+        if texture.use_map_emit:
+            tMaterial.emitTexName = imageName
+            tMaterial.emitColor = Color((1.0, 1.0, 1.0))
+            tMaterial.emitIntensity = texture.emit_factor
+        if "_LIGHTMAP" in texture.name:
+            tMaterial.lightmapTexName = imageName
+        if "_AMBIENTLIGHT" in texture.name:
+            tMaterial.ambientLightTexName = imageName
+        ##tMaterial.imagePath = bpy.path.abspath(faceUv.image.filepath)
+    '''
+
+#---------------------------------
 # Decompose geometries and morphs
 #---------------------------------
 
@@ -1717,27 +1816,30 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
     
     verticesMap = {}
     
-    #Save existing shape key values, and set them to zero
-    shapeKeys = meshObj.data.shape_keys
-    if shapeKeys and len(shapeKeys.key_blocks) > 0:
-        keyBlocks = shapeKeys.key_blocks
-    else:
-        keyBlocks = []
+    # Save existing shape key values, and set them to zero
     shapeKeysOldValues = []
-    for j, block in enumerate(keyBlocks):
-        shapeKeysOldValues.append(block.value)
-        if j == 0:
-            continue
-        block.value = 0
-    # Create a Mesh datablock with modifiers applied
-    # (note: do not apply if not needed, it loses precision)
-    mesh = meshObj.to_mesh(scene, tOptions.applyModifiers, tOptions.applySettings)
-    
+    objShapeKeys = meshObj.data.shape_keys
+    if tOptions.doMorphs and objShapeKeys:
+        for block in objShapeKeys.key_blocks:
+            shapeKeysOldValues.append(block.value)
+            block.value = 0
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    if tOptions.applyModifiers or tOptions.doMorphs:
+        # Create an evaluated object to use modifiers
+        # (note: do not apply if not needed, it loses precision)
+        meshObj = meshObj.evaluated_get(depsgraph)
+    # Create a mesh datablock (owned by the object, removed with to_mesh_clear)
+    mesh = meshObj.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+    if not mesh:
+        log.warning("Object {:s} does not have geometry".format(meshObj.name))
+        return
+
     log.info("Decomposing mesh: {:s} ({:d} vertices)".format(meshObj.name, len(mesh.vertices)) )
     
     # Compute local space unit length split normals vectors
     mesh.calc_normals_split()
-    mesh.calc_tessface()
+    mesh.calc_loop_triangles()
 
     # If we use the object local origin (orange dot) we don't need transformations
     posMatrix = Matrix.Identity(4)
@@ -1750,12 +1852,12 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
 
     # Apply custom rotation
     if tOptions.orientation:
-        posMatrix = tOptions.orientation.to_matrix().to_4x4() * posMatrix
-        normalMatrix = tOptions.orientation.to_matrix().to_4x4() * normalMatrix
+        posMatrix = tOptions.orientation.to_matrix().to_4x4() @ posMatrix
+        normalMatrix = tOptions.orientation.to_matrix().to_4x4() @ normalMatrix
 
     # Apply custom scaling last
     if tOptions.scale != 1.0:
-        posMatrix = Matrix.Scale(tOptions.scale, 4) * posMatrix 
+        posMatrix = Matrix.Scale(tOptions.scale, 4) @ posMatrix 
 
     # Vertices map: vertex Blender index to TVertex index
     faceVertexMap = {}
@@ -1781,144 +1883,73 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
     # Check if the mesh has UV data
     uvs = None
     uvs2 = None
-    # In every texture of every material search if the name ends in "_UV1" or "_UV2",
-    # search also in names of the UV maps
-    for material in mesh.materials:
-        if not material:
-            continue
-        for texture in material.texture_slots:
-            if not texture or texture.texture_coords != "UV":
-                continue
-            tex = texture.name
-            uvMap = texture.uv_layer
-            if not tex or not uvMap or not (uvMap in mesh.uv_textures.keys()):
-                continue
-            if tex.endswith("_UV") or uvMap.endswith("_UV") or \
-               tex.endswith("_UV1") or uvMap.endswith("_UV1"):
-                uvs = mesh.tessface_uv_textures[uvMap].data
-            elif tex.endswith("_UV2") or uvMap.endswith("_UV2"):
-                uvs2 = mesh.tessface_uv_textures[uvMap].data
+    # Search the UV layers which name ends in "_UV1" or "_UV2"  
+    for uvLayer in mesh.uv_layers:
+        if uvLayer.name.endswith("_UV") or uvLayer.name.endswith("_UV1"):
+            uvs = uvLayer.data
+        elif uvLayer.name.endswith("_UV2"):
+            uvs2 = uvLayer.data
     # If still we don't have UV1, try the current UV map selected
-    if not uvs and mesh.tessface_uv_textures.active:
-        uvs = mesh.tessface_uv_textures.active.data
-    # If still we don't have UV1, try the first UV map in Blender
-    if not uvs and mesh.tessface_uv_textures:
-        uvs = mesh.tessface_uv_textures[0].data
+    if not uvs and mesh.uv_layers.active:
+        uvs = mesh.uv_layers.active.data
+    # If still we don't have UV1, try the first UV map in the mesh
+    if not uvs and len(mesh.uv_layers):
+        uvs = mesh.uv_layers[0].data
     if tOptions.doGeometryUV and not uvs:
         log.warning("Object {:s} has no UV data".format(meshObj.name))
     if tOptions.doGeometryUV2 and not uvs2:
-        log.warning("Object {:s} has no texture with UV2 data. Append _UV2 to the texture slot name".format(meshObj.name))
+        log.warning("Object {:s} has no texture with UV2 data, append _UV2 to the UV map's name".format(meshObj.name))
     
     # Check if the mesh has vertex color data
+    # Note: a color map has the aplha component (data[i].color = RGBA), but there is no way to set it in the color
+    # picker, so we use a different vertex color layer to set the aplha, from RGB to HSV and we use V.
     colorsRgb = None
     colorsAlpha = None
     # In vertex colors layer search if the name ends in "_RGB" or "_ALPHA"
-    for vertexColors in mesh.tessface_vertex_colors:
+    for vertexColors in mesh.vertex_colors:
         if not colorsRgb and vertexColors.name.endswith("_RGB"):
             colorsRgb = vertexColors.data
         if not colorsAlpha and vertexColors.name.endswith("_ALPHA"):
             colorsAlpha = vertexColors.data
     # If still we don't have RGB, try the current vertex color layer selected
-    if not colorsRgb and mesh.tessface_vertex_colors.active:
-        colorsRgb = mesh.tessface_vertex_colors.active.data
+    if not colorsRgb and mesh.vertex_colors.active:
+        colorsRgb = mesh.vertex_colors.active.data
     # If still we don't have RGB, try the first vertex color layer in Blender
-    if not colorsRgb and mesh.tessface_vertex_colors:
-        colorsRgb = mesh.tessface_vertex_colors[0].data
+    if not colorsRgb and len(mesh.vertex_colors):
+        colorsRgb = mesh.vertex_colors[0].data
     if tOptions.doGeometryCol and not colorsRgb:
-        log.warning("Object {:s} has no rgb color data".format(meshObj.name))
+        log.warning("Object {:s} has no vertex color data".format(meshObj.name))
     if tOptions.doGeometryColAlpha and not colorsAlpha:
-        log.warning("Object {:s} has no alpha color data. Append _ALPHA to the color layer name".format(meshObj.name))
+        log.warning("Object {:s} has no alpha color data, append _ALPHA to the color layer name".format(meshObj.name))
 
     if tOptions.doMaterials:
-        if scene.render.engine == 'CYCLES':
-            log.warning("Cycles render engine not supported")
         if not mesh.materials:
             log.warning("Object {:s} has no materials data".format(meshObj.name))
 
     # Progress counter
     progressCur = 0
-    progressTot = 0.01 * len(mesh.tessfaces)
+    progressTot = 0.01 * len(mesh.loop_triangles)
 
-    for face in mesh.tessfaces:
+    for tri in mesh.loop_triangles:
 
         if (progressCur % 10) == 0:
             print("{:.3f}%\r".format(progressCur / progressTot), end='' )
         progressCur += 1
 
-        # Skip if this face has less than 3 unique vertices
-        # (a frozenset is an immutable set of unique elements)
-        if len(frozenset(face.vertices)) < 3: 
-            face.hide = True
-            continue
-
-        if face.hide:
-            continue
-
-        # Get face vertices UV, type: MeshTextureFace(bpy_struct)
-        faceUv = uvs and uvs[face.index]
-        faceUv2 = uvs2 and uvs2[face.index]
-
-        # Get face 4 vertices colors
-        fcol = colorsRgb and colorsRgb[face.index]
-        faceRgbColor = fcol and (fcol.color1, fcol.color2, fcol.color3, fcol.color4)
-        fcol = colorsAlpha and colorsAlpha[face.index]
-        faceAlphaColor = fcol and (fcol.color1, fcol.color2, fcol.color3, fcol.color4)
-
-        # Get the face material
-        # If no material is associated then face.material_index is 0 but mesh.materials
+        # Get the triangle material
+        # If no material is associated then tri.material_index is 0 but mesh.materials
         # is not None
         material = None
-        if mesh.materials and len(mesh.materials):
-            material = mesh.materials[face.material_index]
+        if mesh.materials and tri.material_index < len(mesh.materials):
+            material = mesh.materials[tri.material_index]
         
         # Add the material if it is new
         materialName = material and material.name
         if tOptions.doMaterials and materialName and (not materialName in materialsList):
             tMaterial = TMaterial(materialName)
             materialsList.append(tMaterial)
+            DecomposeMaterial(mesh, material, tMaterial, tOptions)
 
-            tMaterial.diffuseColor = material.diffuse_color
-            tMaterial.diffuseIntensity = material.diffuse_intensity
-            tMaterial.specularColor = material.specular_color
-            tMaterial.specularIntensity = material.specular_intensity
-            tMaterial.specularHardness = material.specular_hardness
-            tMaterial.twoSided = mesh.show_double_sided
-            tMaterial.shadeless = material.use_shadeless
-            if material.use_transparency:
-                tMaterial.opacity = material.alpha
-                if material.transparency_method == 'MASK':
-                    tMaterial.alphaMask = True
-
-            # In reverse order so the first slots have precedence
-            for texture in reversed(material.texture_slots):
-                if texture is None or texture.texture_coords != 'UV':
-                    continue
-                textureData = bpy.data.textures[texture.name]
-                if textureData.type != 'IMAGE':
-                    continue
-                if textureData.image is None:
-                    continue
-                # Skip disabled textures
-                textureIndex = material.texture_slots.find(texture.name)
-                if textureIndex >= 0 and not material.use_textures[textureIndex]:
-                    continue
-                imageName = textureData.image.name
-                if texture.use_map_color_diffuse:
-                    tMaterial.diffuseTexName = imageName
-                if texture.use_map_normal:
-                    tMaterial.normalTexName = imageName
-                if texture.use_map_color_spec:
-                    tMaterial.specularTexName = imageName
-                if texture.use_map_emit:
-                    tMaterial.emitTexName = imageName
-                    tMaterial.emitColor = Color((1.0, 1.0, 1.0))
-                    tMaterial.emitIntensity = texture.emit_factor
-                if "_LIGHTMAP" in texture.name:
-                    tMaterial.lightmapTexName = imageName
-                if "_AMBIENTLIGHT" in texture.name:
-                    tMaterial.ambientLightTexName = imageName
-                ##tMaterial.imagePath = bpy.path.abspath(faceUv.image.filepath)
-        
         # If we are merging and want to have separate materials, add the object name
         mapMaterialName = materialName
         if tOptions.mergeObjects and tOptions.mergeNotMaterials:
@@ -1957,25 +1988,31 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         # Here we store all the indices of the face, then we decompose it into triangles
         tempList = []
 
-        for i, vertexIndex in enumerate(face.vertices):
-            # i: vertex index in the face (0..2 tris, 0..3 quad)
-            # vertexIndex: vertex index in Blender buffer
+        assert len(tri.vertices) == 3
+        assert len(tri.loops) == 3
+
+        for i, vertexIndex in enumerate(tri.vertices):
+            # i: vertex index in the face (0->1->2)
+            # vertexIndex: vertex index in Blender buffer (0..maxVertices-1)
+            # loopIndex: vertex index in the loop sequence
+
+            loopIndex = tri.loops[i]
 
             # Blender vertex
             vertex = mesh.vertices[vertexIndex]
 
-            position = posMatrix * vertex.co
+            position = posMatrix @ vertex.co
 
             if mesh.use_auto_smooth:
                 # if using Data->Normals->Auto Smooth, use split normal vector
-                normal = Vector(face.split_normals[i])
-            elif face.use_smooth:
-                # if face is smooth, use vertex normal
+                normal = Vector(tri.split_normals[i])
+            elif tri.use_smooth:
+                # if triangle is smooth, use vertex normal
                 normal = vertex.normal
             else:
-                # use face normal
-                normal = face.normal
-            normal = normalMatrix * normal
+                # use triangle normal
+                normal = tri.normal
+            normal = normalMatrix @ normal
             
             # Create a new vertex
             tVertex = TVertex()
@@ -1990,17 +2027,17 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             # Set Vertex normal
             if tOptions.doGeometryNor:
                 tVertex.normal = Vector((normal.x, normal.z, normal.y))
-                
+
             # Set Vertex UV coordinates
             if tOptions.doGeometryUV:
-                if faceUv:
-                    uv = faceUv.uv[i]
+                if uvs:
+                    uv = uvs[loopIndex].uv
                     tVertex.uv = Vector((uv[0], 1.0 - uv[1]))
                 elif tOptions.doForceElements:
                     tVertex.uv = Vector((0.0, 0.0))
             if tOptions.doGeometryUV2:
-                if faceUv2:
-                    uv2 = faceUv2.uv[i]
+                if uvs2:
+                    uv2 = uvs2[loopIndex].uv
                     tVertex.uv2 = Vector((uv2[0], 1.0 - uv2[1]))
                 elif tOptions.doForceElements:
                     tVertex.uv2 = Vector((0.0, 0.0))
@@ -2008,17 +2045,18 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             # Set Vertex color
             if tOptions.doGeometryCol or tOptions.doGeometryColAlpha:
                 color = [0, 0, 0, 255]
-                if faceRgbColor or faceAlphaColor:
-                    if faceRgbColor:
-                        # This is an array of 3 floats from 0.0 to 1.0
-                        rgb = faceRgbColor[i]
+                if colorsRgb or colorsAlpha:
+                    if colorsRgb:
+                        # This is an array of 3 floats from 0.0 to 1.0 
+                        ###! .color[3] is alpha but you can't set/change it from blender
+                        rgb = colorsRgb[loopIndex].color
                         # Approx 255*float to the closest int
-                        color[:3] = ( int(round(rgb.r * 255.0)), 
-                                      int(round(rgb.g * 255.0)), 
-                                      int(round(rgb.b * 255.0)) )
-                    if faceAlphaColor:
+                        color[:3] = ( int(round(rgb[0] * 255.0)), 
+                                      int(round(rgb[1] * 255.0)), 
+                                      int(round(rgb[2] * 255.0)) )
+                    if colorsAlpha:
                         # For Alpha use Value of HSV
-                        alpha = faceAlphaColor[i]
+                        alpha = Color(colorsAlpha[loopIndex].color[:3])
                         color[3] = int(round(alpha.v * 255.0))
                     tVertex.color = tuple(color)
                 elif tOptions.doForceElements:
@@ -2088,12 +2126,11 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                 verticesList.append(tVertex)
                 verticesMapList.append(tVertexIndex)
 
-
             # Add the vertex index to the temp list to create triangles later
             tempList.append(tVertexIndex)
                         
-            # Map Blender face index and Blender vertex index to our TVertex index (this is used later by Morphs)
-            faceVertexMap[(face.index, vertexIndex)] = tVertexIndex
+            # Map Blender triangle index and Blender vertex index to our TVertex index (this is used later by Morphs)
+            faceVertexMap[(tri.index, vertexIndex)] = tVertexIndex
             
             # Save every unique vertex this LOD is using
             indexSet.add(tVertexIndex)
@@ -2146,15 +2183,16 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
             OptimizeIndices(lodLevel)
     
     # Check if we need and can work on shape keys (morphs)
-    shapeKeys = meshObj.data.shape_keys
     keyBlocks = []
     if tOptions.doMorphs:
+        shapeKeys = mesh.shape_keys
         if not shapeKeys or len(shapeKeys.key_blocks) < 1:
             log.warning("Object {:s} has no shape keys".format(meshObj.name))
         else:
             keyBlocks = shapeKeys.key_blocks
 
     # Decompose shape keys (morphs)
+    morphHasNewNormals = False
     for j, block in enumerate(keyBlocks):
         # Skip 'Basis' shape key
         if j == 0:
@@ -2167,77 +2205,60 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         
         log.info("Decomposing shape: {:s} ({:d} vertices)".format(block.name, len(block.data)) )
 
-        #Set the shape key to 100%
-        block.value = 1
-        #Make a tempory copy of the mesh at this shape.
-        shapeMesh = meshObj.to_mesh(scene, tOptions.applyModifiers, tOptions.applySettings)
-        #Reset the shape key to 0%
-        block.value = 0
+        # Check if vertex counts match
+        if len(mesh.vertices) != len(block.data):
+            log.error("Vertex count mismatch on shape {:s}.".format(block.name))
+            continue
+        
+        # Probably to use the old code where we set the shape key to 100% on the object, we need
+        # to use: evaluated_depsgraph_get + evaluated_get + to_mesh (exactly like done with mesh)
 
-        #Check if vertex counts match. If there is a mismatch, it's likely due to vertices fused together in the shape key.
-        if len(shapeMesh.vertices) != len(mesh.vertices):
-            #Try a fallback of converting shape key data directly to vertex data. If there is a vertex count mismatch, it's due to a modifier changing the vertex count (e.g. mirror).
-            if len(shapeMesh.vertices) != len(block.data):
-                # Delete the temporary copy
-                bpy.data.meshes.remove(shapeMesh)
-                #TODO: Handling this requires a method for mapping original vertex points to their final points, which handles cases where the vertex count changes.
-                log.error("Vertex count mismatch on shape {:s}.".format(block.name))
-                continue
-            else:
-                # Delete the temporary copy
-                bpy.data.meshes.remove(shapeMesh)
-                # Make a new temporary copy of the base mesh
-                shapeMesh = mesh.copy()
-                # Apply the shape
-                for i, data in enumerate(block.data):
-                    shapeMesh.vertices[i].co = data.co
+        # Apply the shape
+        for i, data in enumerate(block.data):
+            mesh.vertices[i].co = data.co
 
         # Recalculate normals
-        shapeMesh.update(calc_edges = True, calc_tessface = True)
+        mesh.update(calc_edges = True, calc_edges_loose = True, calc_loop_triangles = True)
 
         # Compute local space unit length split normals vectors
-        shapeMesh.calc_normals_split()
-        shapeMesh.calc_tessface()
+        mesh.calc_normals_split()
+        mesh.calc_loop_triangles()
         
         # TODO: if set use 'vertex group' of the shape to filter affected vertices
-        # TODO: can we use mesh tessfaces and not shapeMesh tessfaces ?
         
-        for face in shapeMesh.tessfaces:
-            if face.hide:
-                continue
-
+        for tri in mesh.loop_triangles:
             # TODO: add only affected triangles not faces, use morphed as a mask
             morphed = False
 
-            # In this list we store vertex index and morphed vertex of each face, we'll add them
-            # to the morph only if at least one vertex on the face is affected by the moprh
+            # In this list we store vertex index and morphed vertex of each triangle, we'll add them
+            # to the morph only if at least one vertex on the triangle is affected by the morph
             tempList = []
             
-            # For each Blender vertex index in the face
-            for i, vertexIndex in enumerate(face.vertices):
+            # For each Blender vertex index in the triangle
+            for i, vertexIndex in enumerate(tri.vertices):
 
                 # Get the Blender morphed vertex
-                vertex = shapeMesh.vertices[vertexIndex]
+                vertex = mesh.vertices[vertexIndex]
                 
-                position = posMatrix * vertex.co
+                position = posMatrix @ vertex.co
                 
                 if mesh.use_auto_smooth:
                     # if using Data->Normals->Auto Smooth, use split normal vector
-                    normal = Vector(face.split_normals[i])
-                elif face.use_smooth:
-                    # if face is smooth, use vertex normal
+                    normal = Vector(tri.split_normals[i])
+                elif tri.use_smooth:
+                    # if triangle is smooth, use vertex normal
                     normal = vertex.normal
                 else:
-                    # use face normal
-                    normal = face.normal
-                normal = normalMatrix * normal
+                    # use triangle normal
+                    normal = tri.normal
+                normal = normalMatrix @ normal
 
                 # Try to find the TVertex index corresponding to this Blender vertex index
                 try:
-                    tVertexIndex = faceVertexMap[(face.index, vertexIndex)]
+                    tVertexIndex = faceVertexMap[(tri.index, vertexIndex)]
                 except KeyError:
-                    log.error("Cannot find vertex {:d} of face {:d} of shape {:s}."
-                              .format(vertexIndex, face.index, block.name) )
+                    log.error("Cannot find vertex {:d} of triangle {:d} of shape {:s}."
+                              .format(vertexIndex, tri.index, block.name) )
                     continue
 
                 # Get the original not morphed TVertex
@@ -2265,14 +2286,14 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                         tVertex.uv = Vector(0.0, 0.0)
                 
                 # Save vertex index and morphed vertex, to be added later if at least one
-                # vertex in the face was morphed
+                # vertex in the triangle was morphed
                 tempList.append((tVertexIndex, tMorphVertex))
                 
                 # Check if the morph has effect
                 if tMorphVertex.isMorphed(tVertex):
                     morphed = True
             
-            # If at least one vertex in the face was morphed
+            # If at least one vertex in the triangle was morphed
             if morphed:
                 # Add vertices to the morph
                 for i, (tVertexIndex, tMorphVertex) in enumerate(tempList):
@@ -2280,8 +2301,10 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
                         # Check if already present
                         oldTMorphVertex = tMorph.vertexMap[tVertexIndex]
                         if tMorphVertex != oldTMorphVertex:
-                            log.error('Different vertex {:d} of face {:d} of shape {:s}.'
-                                .format(vertexIndex, face.index, block.name) )
+                            log.error('Different vertex {:d} of triangle {:d} of shape {:s}.'
+                                .format(vertexIndex, tri.index, block.name) )
+                            if tMorphVertex.normal != oldTMorphVertex.normal:
+                                morphHasNewNormals = True
                             continue
                     except KeyError:
                         # Add a new morph vertex
@@ -2309,16 +2332,18 @@ def DecomposeMesh(scene, meshObj, tData, tOptions, errorsMem):
         else:
             log.warning('Empty shape {:s}.'.format(block.name))
 
-        # Delete the temporary copy 
-        bpy.data.meshes.remove(shapeMesh)
+    # We can have "Different vertex" errors when some vertices are merged in the base morph because 
+    # positions and normals are the same, but in other morphs, the normals can diverge and this require 
+    # separated vertices. We could do a prepass on the shapes to find and avoid merging these vertices.
+    if morphHasNewNormals:
+        log.info("To solve the shapes errors try setting the faces to smooth")
 
-    #Restore shape keys
-    for j, block in enumerate(keyBlocks):
-        if j == 0:
-            continue
-        block.value = shapeKeysOldValues[j]
+    # Restore shape keys
+    for j, oldValue in enumerate(shapeKeysOldValues):
+        objShapeKeys.key_blocks[j].value = oldValue
 
-    bpy.data.meshes.remove(mesh)    
+    # Delete the mesh
+    meshObj.to_mesh_clear()
 
     return
 
@@ -2348,7 +2373,7 @@ def Scan(context, tDataList, errorsMem, tOptions):
             continue
         
         # Only not hidden
-        if obj.hide:
+        if obj.hide_viewport: ### bugged?
             continue
     
         if tOptions.useLods:
@@ -2402,11 +2427,11 @@ def Scan(context, tDataList, errorsMem, tOptions):
 
         if tOptions.mergeObjects:
             createNew = False
-            # If we are merging objects, use the current selected object name (only if it is a mesh)
-            if context.selected_objects:
-                selectedObject = scene.objects.active
-                if selectedObject.type == 'MESH' and selectedObject.name:
-                    lodName = selectedObject.name
+            # If we are merging objects, use the current active object name (only if it is a mesh)
+            if context.active_object:
+                activeObject = context.active_object
+                if activeObject.type == 'MESH' and activeObject.name:
+                    lodName = activeObject.name
 
         if tOptions.useLods:
             if tOptions.mergeObjects:

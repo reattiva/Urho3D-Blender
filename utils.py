@@ -124,7 +124,7 @@ def GetFilepath(pathType, name, fOptions):
         fullPath = os.path.join(fullPath, fOptions.paths[pathType])
 
     # Compose filename, remove invalid characters
-    filename = re.sub('[^\w_.)( -]', '_', name)
+    filename = name #re.sub('[^\w_.)( -]', '_', name) #YKH
     if type(filename) is list or type(filename) is tuple:
         filename = os.path.sep.join(filename)
 
